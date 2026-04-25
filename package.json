@@ -1,0 +1,21 @@
+{
+  "name": "sanji",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Open-source local AI study buddy. Reads your markdown vault, plans your day, answers questions with semantic citations.",
+  "license": "MIT",
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "dev": "pnpm -r --parallel dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "echo 'lint not configured yet'",
+    "test": "pnpm -r test"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}

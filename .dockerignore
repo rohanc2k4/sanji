@@ -1,0 +1,14 @@
+node_modules/
+.pnpm-store/
+.git/
+.gitignore
+dist/
+build/
+*.log
+.env
+.env.local
+.DS_Store
+.vscode/
+.idea/
+README.md
+NEXT_SESSION.md

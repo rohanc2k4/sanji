@@ -1,0 +1,31 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# build artifacts
+dist/
+build/
+*.tsbuildinfo
+
+# environment
+.env
+.env.local
+.env.*.local
+
+# editor
+.vscode/
+.idea/
+*.swp
+
+# os
+.DS_Store
+Thumbs.db
+
+# logs
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+
+# Sanji's own runtime data when running locally against a dev vault
+.sanji/
+vault/

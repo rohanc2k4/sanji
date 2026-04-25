@@ -1,0 +1,12 @@
+services:
+  sanji:
+    build: .
+    container_name: sanji
+    ports:
+      - "8080:8080"
+    volumes:
+      - ${VAULT_PATH:-./vault}:/data/vault
+    environment:
+      - PORT=8080
+      - VAULT_PATH=/data/vault
+    restart: unless-stopped
