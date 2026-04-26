@@ -26,7 +26,7 @@ export function parseNote(path: string, source: string, mtimeMs: number): Parsed
 
   const counts = new Map<string, number>();
   for (const m of body.matchAll(WIKILINK_RE)) {
-    const slug = m[1].trim();
+    const slug = (m[1] ?? '').trim();
     if (!slug) continue;
     counts.set(slug, (counts.get(slug) ?? 0) + 1);
   }

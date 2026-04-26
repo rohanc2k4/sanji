@@ -17,7 +17,9 @@ describe('chunkBody', () => {
     const out = chunkBody(big, { sizeTokens: 100, overlapTokens: 20 });
     expect(out.length).toBeGreaterThan(1);
     for (let i = 1; i < out.length; i++) {
-      expect(out[i].startChar).toBeLessThan(out[i - 1].endChar);
+      const cur = out[i]!;
+      const prev = out[i - 1]!;
+      expect(cur.startChar).toBeLessThan(prev.endChar);
     }
     for (const c of out) expect(c.text.length).toBeGreaterThan(0);
   });
