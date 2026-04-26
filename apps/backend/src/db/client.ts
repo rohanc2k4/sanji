@@ -8,6 +8,7 @@ export type Db = DB;
 export function openDb(file: string): Db {
   mkdirSync(dirname(file), { recursive: true });
   const db = new Database(file);
+  db.defaultSafeIntegers(true); // return INTEGER columns as BigInt so vec0 rowid bindings work
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
   db.pragma('synchronous = NORMAL');

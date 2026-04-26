@@ -16,9 +16,9 @@ describe('openDb', () => {
     expect(vecVersion.v.length).toBeGreaterThan(0);
 
     const fts = db.prepare("SELECT sqlite_compileoption_used('ENABLE_FTS5') AS f").get() as {
-      f: number;
+      f: bigint;
     };
-    expect(fts.f).toBe(1);
+    expect(fts.f).toBe(1n);
     db.close();
   });
 
@@ -29,8 +29,8 @@ describe('openDb', () => {
     expect((db.prepare('PRAGMA journal_mode').get() as { journal_mode: string }).journal_mode).toBe(
       'wal',
     );
-    expect((db.prepare('PRAGMA foreign_keys').get() as { foreign_keys: number }).foreign_keys).toBe(
-      1,
+    expect((db.prepare('PRAGMA foreign_keys').get() as { foreign_keys: bigint }).foreign_keys).toBe(
+      1n,
     );
     db.close();
   });
