@@ -19,8 +19,13 @@ export function parseNote(path: string, source: string, mtimeMs: number): Parsed
     body = parsed.content;
   }
 
+  const rawTitle = frontmatter ? frontmatter.title : null;
   const fmTitle =
-    frontmatter && typeof frontmatter.title === 'string' ? (frontmatter.title as string) : null;
+    rawTitle != null && (typeof rawTitle === 'string' || rawTitle instanceof Date)
+      ? rawTitle instanceof Date
+        ? rawTitle.toISOString().slice(0, 10)
+        : (rawTitle as string)
+      : null;
   const h1 = body.match(H1_RE)?.[1] ?? null;
   const title = fmTitle ?? h1 ?? null;
 
