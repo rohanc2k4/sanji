@@ -13,10 +13,10 @@ afterEach(async () => {
   await rm(join(FIXTURE_VAULT, '.sanji'), { recursive: true, force: true });
 });
 
-async function runCli(args: string[]) {
+async function runCli(args: string[], extraEnv: Record<string, string> = {}) {
   return exec('pnpm', ['--silent', 'sanji', ...args], {
     cwd: join(HERE, '..'),
-    env: { ...process.env, SANJI_FAKE_EMBED: '1' },
+    env: { ...process.env, SANJI_FAKE_EMBED: '1', ...extraEnv },
   });
 }
 
@@ -45,5 +45,23 @@ describe('sanji CLI', () => {
     await runCli(['--vault', FIXTURE_VAULT, 'index']);
     const { stdout } = await runCli(['--vault', FIXTURE_VAULT, 'ssearch', 'deployment']);
     expect(stdout).toMatch(/distance/);
+  });
+
+  it('ask prints final stats line including the resolved skill name', async () => {
+    await runCli(['--vault', FIXTURE_VAULT, 'init']);
+    const { stdout } = await runCli(
+      ['--vault', FIXTURE_VAULT, 'ask', 'what does the daily note say about argocd?'],
+      { SANJI_OFFLINE_FAKE_LLM: '1' },
+    );
+    expect(stdout).toMatch(/skill: ask/);
+  });
+
+  it('ask routes /recap to the recap skill', async () => {
+    await runCli(['--vault', FIXTURE_VAULT, 'init']);
+    const { stdout } = await runCli(
+      ['--vault', FIXTURE_VAULT, 'ask', '/recap projects/argocd.md'],
+      { SANJI_OFFLINE_FAKE_LLM: '1' },
+    );
+    expect(stdout).toMatch(/skill: recap/);
   });
 });
