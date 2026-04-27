@@ -11,6 +11,7 @@ import { makeAdapter } from './llm/factory.js';
 import { runAgent } from './agent/run.js';
 import { loadSkills } from './skills/loader.js';
 import { Registry } from './tools/registry.js';
+import { ALL_STUBS } from './tools/_stubs.js';
 import type { ToolContext } from './tools/types.js';
 import type { ChatEvent, ChatOpts, ProviderAdapter } from '@sanji/shared';
 
@@ -135,7 +136,7 @@ program
     }
 
     const registry = new Registry();
-    // Tool registrations land in T11-T15. Empty registry is fine for now.
+    for (const t of ALL_STUBS) registry.register(t);
 
     const ctx: ToolContext = { paths, db, repo: new IndexRepo(db), embedder };
 
