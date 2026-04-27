@@ -19,10 +19,13 @@ export class ClaudeCodeSDKAdapter implements ProviderAdapter {
       return;
     }
 
-    const mcpServers =
-      opts.tools && opts.tools.length > 0 && opts.toolHandler
-        ? { 'sanji-tools': buildMcpServer(opts.tools, opts.toolHandler) }
-        : undefined;
+    const hasTools = !!(opts.tools && opts.tools.length > 0 && opts.toolHandler);
+    const mcpServers = hasTools
+      ? { 'sanji-tools': buildMcpServer(opts.tools!, opts.toolHandler!) }
+      : undefined;
+    const allowedTools = hasTools
+      ? opts.tools!.map((t) => `mcp__sanji-tools__${t.name}`)
+      : undefined;
 
     const stream = query({
       prompt: lastUser.content,
@@ -30,6 +33,7 @@ export class ClaudeCodeSDKAdapter implements ProviderAdapter {
         model: opts.model,
         systemPrompt: opts.system,
         ...(mcpServers ? { mcpServers } : {}),
+        ...(allowedTools ? { allowedTools, permissionMode: 'bypassPermissions' as const } : {}),
       },
     });
 

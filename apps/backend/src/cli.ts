@@ -11,7 +11,11 @@ import { makeAdapter } from './llm/factory.js';
 import { runAgent } from './agent/run.js';
 import { loadSkills } from './skills/loader.js';
 import { Registry } from './tools/registry.js';
-import { ALL_STUBS } from './tools/_stubs.js';
+import { readNoteTool } from './tools/read-note.js';
+import { searchVaultTool } from './tools/search-vault.js';
+import { semanticSearchTool } from './tools/semantic-search.js';
+import { getNeighborsTool } from './tools/get-neighbors.js';
+import { writeNoteTool } from './tools/write-note.js';
 import type { ToolContext } from './tools/types.js';
 import type { ChatEvent, ChatOpts, ProviderAdapter } from '@sanji/shared';
 
@@ -136,7 +140,11 @@ program
     }
 
     const registry = new Registry();
-    for (const t of ALL_STUBS) registry.register(t);
+    registry.register(readNoteTool);
+    registry.register(searchVaultTool);
+    registry.register(semanticSearchTool);
+    registry.register(getNeighborsTool);
+    registry.register(writeNoteTool);
 
     const ctx: ToolContext = { paths, db, repo: new IndexRepo(db), embedder };
 
