@@ -18,6 +18,11 @@ export class ClaudeCodeSDKAdapter implements ProviderAdapter {
       yield { type: 'error', message: 'no user message' };
       return;
     }
+    if (opts.messages.length > 1) {
+      process.stderr.write(
+        'ClaudeCodeSDKAdapter: multi-turn messages dropped; only the last user message is forwarded.\n',
+      );
+    }
 
     const hasTools = !!(opts.tools && opts.tools.length > 0 && opts.toolHandler);
     const mcpServers = hasTools
@@ -121,6 +126,9 @@ function toZodShape(schema: ChatTool['input_schema']): Record<string, z.ZodTypeA
         zod = z.boolean();
         break;
       default:
+        // Nested objects and arrays are not yet mapped; the model sees them as
+        // untyped here. The schema description still flows through via t.description,
+        // and runtime validation happens at the tool's own validate*() functions.
         zod = z.unknown();
     }
     if (prop.description) zod = zod.describe(prop.description);

@@ -1,17 +1,8 @@
 import { readFile } from 'node:fs/promises';
-import { isAbsolute, join } from 'node:path';
+import { join } from 'node:path';
 import { parseNote } from '../vault/parse.js';
+import { validateVaultRelativePath } from './validation.js';
 import type { Tool } from './types.js';
-
-function validatePath(input: unknown): string {
-  if (typeof input !== 'string') throw new Error("'path' must be a string");
-  if (!input.length) throw new Error("'path' must not be empty");
-  if (isAbsolute(input)) throw new Error("'path' must be relative to the vault root");
-  if (input.split(/[\\/]/).some((seg) => seg === '..')) {
-    throw new Error("'path' must not contain traversal segments ('..')");
-  }
-  return input;
-}
 
 export const readNoteTool: Tool = {
   name: 'read_note',
@@ -28,7 +19,7 @@ export const readNoteTool: Tool = {
     required: ['path'],
   },
   async run(input, ctx) {
-    const path = validatePath(input.path);
+    const path = validateVaultRelativePath(input.path);
     const abs = join(ctx.paths.vault, path);
     const source = await readFile(abs, 'utf8');
     const parsed = parseNote(path, source, 0);

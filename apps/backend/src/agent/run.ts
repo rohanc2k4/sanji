@@ -10,7 +10,6 @@ export interface AgentDependencies {
   ctx: ToolContext;
   skills: readonly Skill[];
   defaultModel: string;
-  heavyModel?: string;
 }
 
 export interface AgentStats {

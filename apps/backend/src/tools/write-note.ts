@@ -1,16 +1,7 @@
 import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
-import { dirname, isAbsolute, join, relative } from 'node:path';
+import { dirname, join, relative } from 'node:path';
+import { validateVaultRelativePath } from './validation.js';
 import type { Tool } from './types.js';
-
-function validatePath(input: unknown): string {
-  if (typeof input !== 'string') throw new Error("'path' must be a string");
-  if (!input.length) throw new Error("'path' must not be empty");
-  if (isAbsolute(input)) throw new Error("'path' must be relative to the vault root");
-  if (input.split(/[\\/]/).some((seg) => seg === '..')) {
-    throw new Error("'path' must not contain traversal segments ('..')");
-  }
-  return input;
-}
 
 function validateContent(input: unknown): string {
   if (typeof input !== 'string') throw new Error("'content' must be a string");
@@ -29,7 +20,7 @@ async function fileExists(p: string): Promise<boolean> {
 export const writeNoteTool: Tool = {
   name: 'write_note',
   description:
-    'Atomic write to a vault path. Snapshots any existing file to .sanji/versions/<path>.<unix-ts>.md before overwrite. Auto-creates parent directories. Returns JSON {path, snapshot, bytesWritten} where snapshot is null for new files.',
+    'Atomic write to a vault path. Snapshots any existing file to .sanji/versions/<path>.<unix-ts> before overwrite (preserving the original extension). Auto-creates parent directories. Returns JSON {path, snapshot, bytesWritten} — snapshot is the vault-relative snapshot path (null for new files).',
   inputSchema: {
     type: 'object',
     properties: {
@@ -45,7 +36,7 @@ export const writeNoteTool: Tool = {
     required: ['path', 'content'],
   },
   async run(input, ctx) {
-    const path = validatePath(input.path);
+    const path = validateVaultRelativePath(input.path);
     const content = validateContent(input.content);
     const abs = join(ctx.paths.vault, path);
     const tmp = `${abs}.tmp`;
@@ -56,7 +47,7 @@ export const writeNoteTool: Tool = {
     if (await fileExists(abs)) {
       const previous = await readFile(abs, 'utf8');
       const ts = Date.now();
-      const snapshotAbs = join(ctx.paths.versionsDir, `${path}.${ts}.md`);
+      const snapshotAbs = join(ctx.paths.versionsDir, `${path}.${ts}`);
       await mkdir(dirname(snapshotAbs), { recursive: true });
       await writeFile(snapshotAbs, previous, 'utf8');
       snapshotRel = relative(ctx.paths.vault, snapshotAbs);

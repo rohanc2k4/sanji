@@ -130,43 +130,46 @@ program
       ? new OfflineFakeAdapter()
       : makeAdapter(cfg);
 
-    const { skills, errors } = await loadSkills(paths);
-    for (const e of errors) {
-      process.stderr.write(`skill load error: ${e.source}: ${e.message}\n`);
+    try {
+      const { skills, errors } = await loadSkills(paths);
+      for (const e of errors) {
+        process.stderr.write(`skill load error: ${e.source}: ${e.message}\n`);
+      }
+      if (skills.length === 0) {
+        process.stderr.write('no skills loaded -- run a fresh `sanji init`?\n');
+        process.exitCode = 1;
+        return;
+      }
+
+      const registry = new Registry();
+      registry.register(readNoteTool);
+      registry.register(searchVaultTool);
+      registry.register(semanticSearchTool);
+      registry.register(getNeighborsTool);
+      registry.register(writeNoteTool);
+
+      const ctx: ToolContext = { paths, db, repo: new IndexRepo(db), embedder };
+
+      const stream = runAgent(
+        { adapter, registry, ctx, skills, defaultModel: cfg.models.default },
+        message,
+      );
+
+      let stats: { skill: string; toolCalls: number } | undefined;
+      while (true) {
+        const r = await stream.next();
+        if (r.done) { stats = r.value; break; }
+        const ev = r.value;
+        if (ev.type === 'text_delta') process.stdout.write(ev.text);
+        else if (ev.type === 'tool_use_complete') process.stderr.write(`\n[tool] ${ev.name} ${JSON.stringify(ev.input)}\n`);
+        else if (ev.type === 'error') process.stderr.write(`\nerror: ${ev.message}\n`);
+      }
+      process.stdout.write('\n');
+      if (stats) process.stdout.write(`skill: ${stats.skill}  tools: ${stats.toolCalls}\n`);
+    } finally {
+      await embedder.close();
+      db.close();
     }
-    if (skills.length === 0) {
-      process.stderr.write('no skills loaded -- run a fresh `sanji init`?\n');
-      process.exit(1);
-    }
-
-    const registry = new Registry();
-    registry.register(readNoteTool);
-    registry.register(searchVaultTool);
-    registry.register(semanticSearchTool);
-    registry.register(getNeighborsTool);
-    registry.register(writeNoteTool);
-
-    const ctx: ToolContext = { paths, db, repo: new IndexRepo(db), embedder };
-
-    const stream = runAgent(
-      { adapter, registry, ctx, skills, defaultModel: cfg.models.default, heavyModel: cfg.models.heavy },
-      message,
-    );
-
-    let stats: { skill: string; toolCalls: number } | undefined;
-    while (true) {
-      const r = await stream.next();
-      if (r.done) { stats = r.value; break; }
-      const ev = r.value;
-      if (ev.type === 'text_delta') process.stdout.write(ev.text);
-      else if (ev.type === 'tool_use_complete') process.stderr.write(`\n[tool] ${ev.name} ${JSON.stringify(ev.input)}\n`);
-      else if (ev.type === 'error') process.stderr.write(`\nerror: ${ev.message}\n`);
-    }
-    process.stdout.write('\n');
-    if (stats) process.stdout.write(`skill: ${stats.skill}  tools: ${stats.toolCalls}\n`);
-
-    await embedder.close();
-    db.close();
   });
 
 program.parseAsync(process.argv).catch((err) => {

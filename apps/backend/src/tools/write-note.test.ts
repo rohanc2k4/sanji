@@ -40,7 +40,7 @@ describe('writeNoteTool', () => {
 
     const out = await writeNoteTool.run({ path: 'scratch/a.md', content: 'new' }, ctx);
     const r = JSON.parse(out);
-    expect(r.snapshot).toMatch(/^\.sanji\/versions\/scratch\/a\.md\.\d+\.md$/);
+    expect(r.snapshot).toMatch(/^\.sanji\/versions\/scratch\/a\.md\.\d+$/);
     expect(readFileSync(join(dir, 'scratch/a.md'), 'utf8')).toBe('new');
 
     const snapshots = readdirSync(join(dir, '.sanji/versions/scratch'));

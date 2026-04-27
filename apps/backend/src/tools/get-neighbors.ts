@@ -1,11 +1,5 @@
+import { validateNonEmptyPath } from './validation.js';
 import type { Tool } from './types.js';
-
-function validatePath(input: unknown): string {
-  if (typeof input !== 'string' || !input.length) {
-    throw new Error("'path' must be a non-empty string");
-  }
-  return input;
-}
 
 function validateDepth(input: unknown): 1 | 2 {
   const n = input ?? 1;
@@ -45,7 +39,7 @@ export const getNeighborsTool: Tool = {
     required: ['path'],
   },
   async run(input, ctx) {
-    const path = validatePath(input.path);
+    const path = validateNonEmptyPath(input.path);
     const depth = validateDepth(input.depth);
 
     // Build slug → path index from all known notes (case-insensitive, first-write-wins).
