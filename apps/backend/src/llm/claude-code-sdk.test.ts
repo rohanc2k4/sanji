@@ -47,4 +47,31 @@ describe('ClaudeCodeSDKAdapter', () => {
     }
     expect(events.find((e: any) => e.type === 'text_delta')).toBeTruthy();
   });
+
+  it('accepts tools with multi-field schemas (string + optional number)', async () => {
+    const a = new ClaudeCodeSDKAdapter();
+    const events: unknown[] = [];
+    for await (const e of a.chat({
+      model: 'claude-sonnet-4-6',
+      messages: [{ role: 'user', content: 'hi' }],
+      tools: [
+        {
+          name: 'search_vault',
+          description: 'FTS5 keyword search',
+          input_schema: {
+            type: 'object' as const,
+            properties: {
+              query: { type: 'string' },
+              limit: { type: 'number' },
+            },
+            required: ['query'],
+          },
+        },
+      ],
+      toolHandler: async () => 'ok',
+    })) {
+      events.push(e);
+    }
+    expect(events.find((e: any) => e.type === 'text_delta')).toBeTruthy();
+  });
 });

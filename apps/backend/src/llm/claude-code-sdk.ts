@@ -89,12 +89,38 @@ function buildMcpServer(
     tool(
       t.name,
       t.description,
-      { input: z.string().optional() },
-      async (_args: { input?: string }, _extra: unknown) => {
-        const result = await handler(t.name, _args as Record<string, unknown>);
+      toZodShape(t.input_schema),
+      async (args: Record<string, unknown>, _extra: unknown) => {
+        const result = await handler(t.name, args);
         return { content: [{ type: 'text' as const, text: result }] };
       },
     ),
   );
   return createSdkMcpServer({ name: 'sanji-tools', version: '0.0.1', tools: sdkTools });
+}
+
+function toZodShape(schema: ChatTool['input_schema']): Record<string, z.ZodTypeAny> {
+  const required = new Set(schema.required ?? []);
+  const shape: Record<string, z.ZodTypeAny> = {};
+  for (const [key, raw] of Object.entries(schema.properties ?? {})) {
+    const prop = raw as { type?: string; description?: string };
+    let zod: z.ZodTypeAny;
+    switch (prop.type) {
+      case 'string':
+        zod = z.string();
+        break;
+      case 'number':
+      case 'integer':
+        zod = z.number();
+        break;
+      case 'boolean':
+        zod = z.boolean();
+        break;
+      default:
+        zod = z.unknown();
+    }
+    if (prop.description) zod = zod.describe(prop.description);
+    shape[key] = required.has(key) ? zod : zod.optional();
+  }
+  return shape;
 }
