@@ -36,6 +36,13 @@ export class TransformersEmbedder implements Embedder {
       for (const p of this.pending.values()) p.reject(err);
       this.pending.clear();
     });
+    this.worker.on('exit', (code) => {
+      if (this.pending.size === 0) return;
+      for (const p of this.pending.values()) {
+        p.reject(new Error(`embedding worker exited with code ${code}`));
+      }
+      this.pending.clear();
+    });
   }
 
   async embed(text: string): Promise<Float32Array> {

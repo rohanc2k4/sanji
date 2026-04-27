@@ -18,10 +18,9 @@ export class AnthropicApiAdapter implements ProviderAdapter {
       model: opts.model,
       max_tokens: opts.maxTokens ?? 1024,
       system: opts.system,
-      messages: opts.messages.map((m) => ({
-        role: m.role === 'system' ? 'user' : m.role,
-        content: m.content,
-      })),
+      messages: opts.messages
+        .filter((m) => m.role !== 'system')
+        .map((m) => ({ role: m.role, content: m.content })),
     } as Anthropic.MessageStreamParams);
 
     let usage: { input: number; output: number } | undefined;

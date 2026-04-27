@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS chunks (
 );
 
 CREATE TABLE IF NOT EXISTS wikilinks (
-  source_path TEXT NOT NULL,
+  source_path TEXT NOT NULL REFERENCES notes(path) ON DELETE CASCADE ON UPDATE CASCADE,
   target_slug TEXT NOT NULL,
   occurrence_count INTEGER NOT NULL,
   PRIMARY KEY (source_path, target_slug)

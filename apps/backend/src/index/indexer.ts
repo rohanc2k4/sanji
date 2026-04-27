@@ -15,6 +15,12 @@ export interface IndexerOptions {
 export interface IndexStats {
   notesIndexed: number;
   chunksIndexed: number;
+  notesSkipped: number;
+}
+
+export interface IndexFileResult {
+  chunksIndexed: number;
+  skipped: boolean;
 }
 
 const SKIP_DIRS = new Set(['.sanji', '.git', 'node_modules']);
@@ -31,19 +37,27 @@ export class Indexer {
   }
 
   async indexAll(vaultRoot: string): Promise<IndexStats> {
-    const stats: IndexStats = { notesIndexed: 0, chunksIndexed: 0 };
+    const stats: IndexStats = { notesIndexed: 0, chunksIndexed: 0, notesSkipped: 0 };
     for (const file of walkMarkdown(vaultRoot)) {
       const rel = relative(vaultRoot, file);
-      const added = await this.indexFile(vaultRoot, rel);
+      const result = await this.indexFile(vaultRoot, rel);
+      if (result.skipped) {
+        stats.notesSkipped += 1;
+        continue;
+      }
       stats.notesIndexed += 1;
-      stats.chunksIndexed += added;
+      stats.chunksIndexed += result.chunksIndexed;
     }
     return stats;
   }
 
-  async indexFile(vaultRoot: string, relPath: string): Promise<number> {
+  async indexFile(vaultRoot: string, relPath: string): Promise<IndexFileResult> {
     const abs = join(vaultRoot, relPath);
     const st = await stat(abs);
+    const existing = this.repo.getNote(relPath);
+    if (existing && existing.mtimeMs === st.mtimeMs) {
+      return { chunksIndexed: 0, skipped: true };
+    }
     const source = await readFile(abs, 'utf8');
     const { note, wikilinks } = parseNote(relPath, source, st.mtimeMs);
     this.repo.upsertNote(note);
@@ -63,7 +77,7 @@ export class Indexer {
       })),
     );
     this.repo.replaceChunksForNote(relPath, upserts);
-    return upserts.length;
+    return { chunksIndexed: upserts.length, skipped: false };
   }
 
   async indexDelete(relPath: string): Promise<void> {

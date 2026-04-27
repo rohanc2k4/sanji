@@ -20,47 +20,58 @@ export function chunkBody(body: string, opts: ChunkOptions): BodyChunk[] {
   const chunks: BodyChunk[] = [];
   let acc = '';
   let accStart = paragraphs[0]?.startChar ?? 0;
+  let accEnd = accStart;
 
   for (const p of paragraphs) {
+    const pEnd = p.startChar + p.text.length;
     if (p.text.length > sizeChars) {
       if (acc.length) {
-        chunks.push({ text: acc, startChar: accStart, endChar: accStart + acc.length });
+        chunks.push({ text: acc, startChar: accStart, endChar: accEnd });
         acc = '';
       }
       for (const slice of sliceChars(p.text, sizeChars, overlapChars, p.startChar)) {
         chunks.push(slice);
       }
-      accStart = p.startChar + p.text.length;
+      accStart = pEnd;
+      accEnd = pEnd;
       continue;
     }
 
     if (!acc.length) {
       acc = p.text;
       accStart = p.startChar;
+      accEnd = pEnd;
     } else if (acc.length + 2 + p.text.length <= sizeChars) {
       acc = `${acc}\n\n${p.text}`;
+      accEnd = pEnd;
     } else {
-      chunks.push({ text: acc, startChar: accStart, endChar: accStart + acc.length });
+      chunks.push({ text: acc, startChar: accStart, endChar: accEnd });
       const overlapStart = Math.max(0, acc.length - overlapChars);
       const overlapText = acc.slice(overlapStart);
       acc = overlapText.length ? `${overlapText}\n\n${p.text}` : p.text;
-      accStart = accStart + overlapStart;
+      // overlapText is sliced from the synthetic join; its position in the
+      // original body is approximate when paragraph separators exceed \n\n.
+      accStart = overlapText.length ? Math.max(0, accEnd - overlapText.length) : p.startChar;
+      accEnd = pEnd;
     }
   }
 
-  if (acc.length) chunks.push({ text: acc, startChar: accStart, endChar: accStart + acc.length });
+  if (acc.length) chunks.push({ text: acc, startChar: accStart, endChar: accEnd });
   return chunks;
 }
 
 function splitParagraphs(body: string): Array<{ text: string; startChar: number }> {
   const out: Array<{ text: string; startChar: number }> = [];
-  const parts = body.split(/\n{2,}/);
-  let cursor = 0;
-  for (const part of parts) {
-    const idx = body.indexOf(part, cursor);
-    if (part.trim().length) out.push({ text: part, startChar: idx });
-    cursor = idx + part.length;
+  const re = /\n{2,}/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(body)) !== null) {
+    const part = body.slice(last, m.index);
+    if (part.trim().length) out.push({ text: part, startChar: last });
+    last = m.index + m[0].length;
   }
+  const tail = body.slice(last);
+  if (tail.trim().length) out.push({ text: tail, startChar: last });
   return out;
 }
 

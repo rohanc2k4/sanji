@@ -8,6 +8,9 @@ const KNOWN_MODELS: ModelInfo[] = [
 ];
 
 export class ClaudeCodeSDKAdapter implements ProviderAdapter {
+  // NOTE: single-turn only. The underlying query() API takes one prompt, so
+  // prior conversation turns in opts.messages are dropped — only the most
+  // recent user message is forwarded.
   async *chat(opts: ChatOpts): AsyncIterable<ChatEvent> {
     const lastUser = [...opts.messages].reverse().find((m) => m.role === 'user');
     if (!lastUser) {

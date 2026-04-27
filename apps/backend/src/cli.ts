@@ -24,8 +24,11 @@ program
     const paths = resolveVaultPaths(program.opts().vault);
     loadOrInitConfig(paths);
     const db = openDb(paths.indexDb);
-    runMigrations(db);
-    db.close();
+    try {
+      runMigrations(db);
+    } finally {
+      db.close();
+    }
     console.log(`initialized .sanji at ${paths.sanjiDir}`);
   });
 
@@ -36,16 +39,21 @@ program
     const paths = resolveVaultPaths(program.opts().vault);
     const cfg = loadOrInitConfig(paths);
     const db = openDb(paths.indexDb);
-    runMigrations(db);
     const embedder = buildEmbedder();
-    const ix = new Indexer(db, embedder, {
-      chunkSizeTokens: cfg.indexing.chunk_size_tokens,
-      chunkOverlapTokens: cfg.indexing.chunk_overlap_tokens,
-    });
-    const stats = await ix.indexAll(paths.vault);
-    console.log(`notes: ${stats.notesIndexed}  chunks: ${stats.chunksIndexed}`);
-    await embedder.close();
-    db.close();
+    try {
+      runMigrations(db);
+      const ix = new Indexer(db, embedder, {
+        chunkSizeTokens: cfg.indexing.chunk_size_tokens,
+        chunkOverlapTokens: cfg.indexing.chunk_overlap_tokens,
+      });
+      const stats = await ix.indexAll(paths.vault);
+      console.log(
+        `notes: ${stats.notesIndexed}  chunks: ${stats.chunksIndexed}  skipped: ${stats.notesSkipped}`,
+      );
+    } finally {
+      await embedder.close();
+      db.close();
+    }
   });
 
 program
@@ -56,14 +64,17 @@ program
     const paths = resolveVaultPaths(program.opts().vault);
     loadOrInitConfig(paths);
     const db = openDb(paths.indexDb);
-    runMigrations(db);
-    const rows = db
-      .prepare(
-        "SELECT path, title, snippet(notes_fts, 2, '[', ']', '…', 8) AS preview FROM notes_fts WHERE notes_fts MATCH ? ORDER BY rank LIMIT ?",
-      )
-      .all(query, Number(opts.limit)) as Array<{ path: string; title: string | null; preview: string }>;
-    for (const r of rows) console.log(`${r.path}\t${r.title ?? ''}\t${r.preview}`);
-    db.close();
+    try {
+      runMigrations(db);
+      const rows = db
+        .prepare(
+          "SELECT path, title, snippet(notes_fts, 2, '[', ']', '…', 8) AS preview FROM notes_fts WHERE notes_fts MATCH ? ORDER BY rank LIMIT ?",
+        )
+        .all(query, Number(opts.limit)) as Array<{ path: string; title: string | null; preview: string }>;
+      for (const r of rows) console.log(`${r.path}\t${r.title ?? ''}\t${r.preview}`);
+    } finally {
+      db.close();
+    }
   });
 
 program
@@ -74,13 +85,16 @@ program
     const paths = resolveVaultPaths(program.opts().vault);
     loadOrInitConfig(paths);
     const db = openDb(paths.indexDb);
-    runMigrations(db);
     const embedder = buildEmbedder();
-    const vec = await embedder.embed(query);
-    const hits = new IndexRepo(db).knnChunks(vec, Number(opts.limit));
-    for (const h of hits) console.log(`${h.notePath}#${h.chunkIndex}\tdistance=${h.distance.toFixed(4)}\t${h.text.slice(0, 80)}`);
-    await embedder.close();
-    db.close();
+    try {
+      runMigrations(db);
+      const vec = await embedder.embed(query);
+      const hits = new IndexRepo(db).knnChunks(vec, Number(opts.limit));
+      for (const h of hits) console.log(`${h.notePath}#${h.chunkIndex}\tdistance=${h.distance.toFixed(4)}\t${h.text.slice(0, 80)}`);
+    } finally {
+      await embedder.close();
+      db.close();
+    }
   });
 
 program
@@ -100,4 +114,7 @@ program
     }
   });
 
-program.parseAsync(process.argv);
+program.parseAsync(process.argv).catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

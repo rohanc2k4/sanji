@@ -124,6 +124,7 @@ describe('IndexRepo — chunks', () => {
 describe('IndexRepo — wikilinks', () => {
   it("replaces a source's wikilinks atomically", () => {
     const { repo } = setup();
+    repo.upsertNote({ path: 'a.md', mtimeMs: 1, body: 'b', frontmatter: null, title: null });
     repo.replaceLinksForSource('a.md', [
       { sourcePath: 'a.md', targetSlug: 'foo', occurrenceCount: 2 },
       { sourcePath: 'a.md', targetSlug: 'bar', occurrenceCount: 1 },
@@ -144,6 +145,8 @@ describe('IndexRepo — wikilinks', () => {
 
   it('finds inbound links by slug', () => {
     const { repo } = setup();
+    repo.upsertNote({ path: 'a.md', mtimeMs: 1, body: 'b', frontmatter: null, title: null });
+    repo.upsertNote({ path: 'b.md', mtimeMs: 1, body: 'b', frontmatter: null, title: null });
     repo.replaceLinksForSource('a.md', [{ sourcePath: 'a.md', targetSlug: 'foo', occurrenceCount: 1 }]);
     repo.replaceLinksForSource('b.md', [{ sourcePath: 'b.md', targetSlug: 'foo', occurrenceCount: 3 }]);
     expect(repo.inboundLinks('foo').map((w) => w.sourcePath).sort()).toEqual(['a.md', 'b.md']);
@@ -151,6 +154,7 @@ describe('IndexRepo — wikilinks', () => {
 
   it('drops all rows when source is deleted', () => {
     const { repo } = setup();
+    repo.upsertNote({ path: 'a.md', mtimeMs: 1, body: 'b', frontmatter: null, title: null });
     repo.replaceLinksForSource('a.md', [{ sourcePath: 'a.md', targetSlug: 'foo', occurrenceCount: 1 }]);
     repo.deleteLinksForSource('a.md');
     expect(repo.outboundLinks('a.md')).toEqual([]);
