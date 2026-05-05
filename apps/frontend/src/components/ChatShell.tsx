@@ -1,5 +1,3 @@
-import { X } from 'lucide-react';
-import { Button } from './ui/button';
 import { ChatPane } from './ChatPane';
 import { Composer } from './Composer';
 import { EditorPanel } from './EditorPanel';
@@ -52,17 +50,7 @@ export function ChatShell({ editorPath, onOpenEditor, onCloseEditor }: ChatShell
             editorOpen ? 'translate-x-0' : 'translate-x-full',
           ].join(' ')}
         >
-          <div className="flex h-12 shrink-0 items-center justify-between border-b border-border px-4">
-            <span className="truncate font-mono text-xs text-muted-foreground">
-              {editorPath ?? ''}
-            </span>
-            <Button variant="ghost" size="icon-xs" onClick={onCloseEditor} aria-label="Close editor">
-              <X />
-            </Button>
-          </div>
-          <div className="flex-1 overflow-auto">
-            <EditorPanel path={editorPath} />
-          </div>
+          <EditorPanel path={editorPath} onClose={onCloseEditor} />
         </aside>
       </div>
     </div>
