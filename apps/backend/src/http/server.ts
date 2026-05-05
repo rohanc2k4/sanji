@@ -5,6 +5,8 @@ import { onboardingRoute } from './routes/onboarding.js';
 import { vaultRoute } from './routes/vault.js';
 import { notesRoute } from './routes/notes.js';
 import { chatRoute } from './routes/chat.js';
+import { indexingRoute } from './routes/indexing.js';
+import { Indexer } from '../index/indexer.js';
 import type { ServerDeps } from './deps.js';
 
 export function makeServer(deps: ServerDeps): Hono {
@@ -32,8 +34,17 @@ export function makeServer(deps: ServerDeps): Hono {
         },
       }),
     );
+    const runIndex = async (
+      cb: (done: number, total: number) => void | Promise<void>,
+    ) => {
+      const ix = new Indexer(deps.db, deps.embedder, {
+        chunkSizeTokens: deps.cfg.indexing.chunkSizeTokens,
+        chunkOverlapTokens: deps.cfg.indexing.chunkOverlapTokens,
+      });
+      await ix.indexAll(deps.paths.vault, { onProgress: cb });
+    };
+    app.route('/', indexingRoute({ runIndex }));
   }
-  // Routes T9 mounts here as it lands.
   return app;
 }
 
