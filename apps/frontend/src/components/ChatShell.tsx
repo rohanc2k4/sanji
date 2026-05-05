@@ -32,7 +32,7 @@ export function ChatShell({ editorPath, onOpenEditor, onCloseEditor }: ChatShell
         </aside>
 
         <main className="relative flex flex-1 flex-col bg-background">
-          <ChatPane />
+          <ChatPane turns={[]} streaming={false} />
         </main>
 
         <aside
