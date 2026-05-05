@@ -6,10 +6,11 @@ import { SourcesSidebar } from './SourcesSidebar';
 
 export interface ChatShellProps {
   editorPath: string | null;
+  onOpenEditor: (path: string) => void;
   onCloseEditor: () => void;
 }
 
-export function ChatShell({ editorPath, onCloseEditor }: ChatShellProps) {
+export function ChatShell({ editorPath, onOpenEditor, onCloseEditor }: ChatShellProps) {
   const editorOpen = editorPath !== null;
 
   return (
@@ -27,7 +28,7 @@ export function ChatShell({ editorPath, onCloseEditor }: ChatShellProps) {
 
       <div className="relative flex flex-1 overflow-hidden">
         <aside className="w-[220px] shrink-0 border-r border-border bg-sidebar">
-          <SourcesSidebar />
+          <SourcesSidebar selectedPath={editorPath} onSelect={onOpenEditor} />
         </aside>
 
         <main className="relative flex flex-1 flex-col bg-background">

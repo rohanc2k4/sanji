@@ -7,6 +7,7 @@ export default function App() {
   return (
     <ChatShell
       editorPath={editorPath}
+      onOpenEditor={setEditorPath}
       onCloseEditor={() => setEditorPath(null)}
     />
   );
