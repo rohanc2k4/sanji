@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { ChatMessage } from './ChatMessage';
+import { Mascot } from '@/mascot/Mascot';
 import type { Turn } from './applyEvent';
 
 export interface ChatPaneProps {
@@ -20,7 +21,7 @@ export function ChatPane({ turns, streaming }: ChatPaneProps) {
         {turns.length === 0 ? (
           <EmptyState />
         ) : (
-          <div className="mx-auto flex max-w-3xl flex-col gap-4 px-6 py-6">
+          <div className="mx-auto flex max-w-3xl flex-col gap-4 px-6 py-6 pr-24">
             {turns.map((turn, i) => (
               <ChatMessage
                 key={i}
@@ -32,6 +33,7 @@ export function ChatPane({ turns, streaming }: ChatPaneProps) {
           </div>
         )}
       </div>
+      <Mascot mode="chatty" chatStreaming={streaming} lastError={null} />
     </div>
   );
 }
@@ -40,9 +42,6 @@ function EmptyState() {
   return (
     <div className="flex h-full items-center justify-center px-6">
       <div className="max-w-md text-center">
-        <div className="mb-3 text-4xl" aria-hidden>
-          🐈
-        </div>
         <div className="text-base font-medium text-foreground">What are we figuring out today?</div>
         <p className="mt-2 text-sm text-muted-foreground">
           Ask a question, run a skill like <span className="font-mono text-foreground/80">/recap</span>, or pick a source from the sidebar.
