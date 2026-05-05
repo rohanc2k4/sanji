@@ -1,12 +1,18 @@
 import { useReducer, type ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import {
-  buildConfig,
   initialOnboardingState,
   onboardingReducer,
   type OnboardingState,
   type OnboardingStep,
 } from './reducer';
+import { VaultStep } from './steps/VaultStep';
+import { ProviderStep } from './steps/ProviderStep';
+import { ModelStep } from './steps/ModelStep';
+import { CalendarStep } from './steps/CalendarStep';
+import { TavilyStep } from './steps/TavilyStep';
+import { IndexingStep } from './steps/IndexingStep';
+import { DoneStep } from './steps/DoneStep';
 
 export interface OnboardingFlowProps {
   onComplete: () => void;
@@ -66,7 +72,7 @@ export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
         <p className="mt-2 max-w-md text-sm text-muted-foreground">{subtitle}</p>
 
         <div className="mt-8 flex-1">
-          <StepBody state={state} />
+          <StepBody state={state} dispatch={dispatch} />
         </div>
 
         <div className="mt-10 mb-12 flex items-center justify-between">
@@ -106,18 +112,27 @@ function ProgressDots({ step }: { step: OnboardingStep }) {
   );
 }
 
-function StepBody({ state }: { state: OnboardingState }): ReactNode {
-  // Placeholder content; T17 fills these in with real step components.
-  return (
-    <div className="rounded-md border border-dashed border-border bg-muted/20 p-6 text-sm text-muted-foreground">
-      Step <span className="font-mono text-foreground">{state.step}</span> body — T17 lands the
-      actual {state.step} step component. Reducer state is wired; Continue and Back buttons drive
-      the state machine.
-      {state.step === 'done' && (
-        <div className="mt-3 font-mono text-xs text-muted-foreground/80">
-          buildConfig output: {JSON.stringify(buildConfig(state))}
-        </div>
-      )}
-    </div>
-  );
+interface StepBodyProps {
+  state: OnboardingState;
+  dispatch: React.Dispatch<Parameters<typeof onboardingReducer>[1]>;
+}
+
+function StepBody({ state, dispatch }: StepBodyProps): ReactNode {
+  const props = { state, dispatch };
+  switch (state.step) {
+    case 'vault':
+      return <VaultStep {...props} />;
+    case 'provider':
+      return <ProviderStep {...props} />;
+    case 'model':
+      return <ModelStep {...props} />;
+    case 'calendar':
+      return <CalendarStep {...props} />;
+    case 'tavily':
+      return <TavilyStep {...props} />;
+    case 'indexing':
+      return <IndexingStep {...props} />;
+    case 'done':
+      return <DoneStep {...props} />;
+  }
 }
