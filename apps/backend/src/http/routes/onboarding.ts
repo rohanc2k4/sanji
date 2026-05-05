@@ -44,11 +44,11 @@ function countMdFiles(dir: string): number {
       continue;
     }
     for (const entry of entries) {
-      if (entry.name.startsWith('.')) continue;
       const full = join(d, entry.name);
       if (entry.isDirectory()) {
+        if (entry.name.startsWith('.')) continue;
         stack.push(full);
-      } else if (entry.isFile() && entry.name.endsWith('.md')) {
+      } else if (entry.name.endsWith('.md')) {
         count += 1;
       }
     }
