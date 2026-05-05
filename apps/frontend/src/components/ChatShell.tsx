@@ -1,8 +1,10 @@
 import { X } from 'lucide-react';
 import { Button } from './ui/button';
 import { ChatPane } from './ChatPane';
+import { Composer } from './Composer';
 import { EditorPanel } from './EditorPanel';
 import { SourcesSidebar } from './SourcesSidebar';
+import { useChat } from '@/hooks/useChat';
 
 export interface ChatShellProps {
   editorPath: string | null;
@@ -12,6 +14,7 @@ export interface ChatShellProps {
 
 export function ChatShell({ editorPath, onOpenEditor, onCloseEditor }: ChatShellProps) {
   const editorOpen = editorPath !== null;
+  const chat = useChat();
 
   return (
     <div className="flex h-screen w-screen flex-col bg-background font-sans text-foreground">
@@ -32,7 +35,12 @@ export function ChatShell({ editorPath, onOpenEditor, onCloseEditor }: ChatShell
         </aside>
 
         <main className="relative flex flex-1 flex-col bg-background">
-          <ChatPane turns={[]} streaming={false} />
+          <ChatPane turns={chat.turns} streaming={chat.streaming} />
+          <Composer
+            onSubmit={chat.send}
+            onAbort={chat.abort}
+            streaming={chat.streaming}
+          />
         </main>
 
         <aside
