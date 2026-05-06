@@ -36,17 +36,24 @@ export class Indexer {
     this.repo = new IndexRepo(db);
   }
 
-  async indexAll(vaultRoot: string): Promise<IndexStats> {
+  async indexAll(
+    vaultRoot: string,
+    opts?: { onProgress?: (done: number, total: number) => void },
+  ): Promise<IndexStats> {
     const stats: IndexStats = { notesIndexed: 0, chunksIndexed: 0, notesSkipped: 0 };
-    for (const file of walkMarkdown(vaultRoot)) {
+    const files = [...walkMarkdown(vaultRoot)];
+    let done = 0;
+    for (const file of files) {
       const rel = relative(vaultRoot, file);
       const result = await this.indexFile(vaultRoot, rel);
       if (result.skipped) {
         stats.notesSkipped += 1;
-        continue;
+      } else {
+        stats.notesIndexed += 1;
+        stats.chunksIndexed += result.chunksIndexed;
       }
-      stats.notesIndexed += 1;
-      stats.chunksIndexed += result.chunksIndexed;
+      done += 1;
+      opts?.onProgress?.(done, files.length);
     }
     return stats;
   }

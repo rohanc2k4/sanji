@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { describe, expect, it, afterEach } from 'vitest';
 import { makeTmpDir } from '../../tests/helpers/tmp-db.js';
-import { loadOrInitConfig } from './loader.js';
+import { loadOrInitConfig, saveConfig } from './loader.js';
 import { resolveVaultPaths } from './paths.js';
 
 const cleanups: Array<() => void> = [];
@@ -36,5 +36,22 @@ describe('loadOrInitConfig', () => {
     mkdirSync(paths.sanjiDir, { recursive: true });
     writeFileSync(paths.configFile, '[provider]\nmode = "openai"\n');
     expect(() => loadOrInitConfig(paths)).toThrow();
+  });
+});
+
+describe('saveConfig', () => {
+  it('round-trips through load → save → load with preserved values', () => {
+    const vault = tmpVault();
+    const paths = resolveVaultPaths(vault);
+    const cfg = loadOrInitConfig(paths);
+    cfg.models.default = 'claude-opus-4-7';
+    cfg.ui.theme = 'dark';
+    cfg.calendar.poll_interval_minutes = 15;
+    saveConfig(paths, cfg);
+    const reloaded = loadOrInitConfig(paths);
+    expect(reloaded.models.default).toBe('claude-opus-4-7');
+    expect(reloaded.ui.theme).toBe('dark');
+    expect(reloaded.calendar.poll_interval_minutes).toBe(15);
+    expect(reloaded.provider.mode).toBe('claude-code');
   });
 });

@@ -1,0 +1,37 @@
+# Mascot personality file. Read at frontend build time via ?raw import.
+# Keep entries short (≤ 60 chars). New states require a code change in
+# apps/frontend/src/mascot/useMascotState.ts.
+
+idle:
+  - "purrs."
+  - "ask me about your notes?"
+  - "I'm here when you're ready."
+  - "the vault is quiet."
+  - "watching the cursor."
+
+active:
+  - "sniffing through your notes..."
+  - "chasing the right paragraph..."
+  - "thinking..."
+  - "rummaging through the vault."
+
+error:
+  - "Anthropic just sneezed. Try in a minute?"
+  - "rate limit, hold on."
+  - "something went sideways."
+
+quota:
+  - "out of breath. take a break?"
+  - "monthly quota's tapped — try later."
+
+time:
+  morning:
+    - "good morning. coffee?"
+    - "yawning."
+    - "what's on the docket today?"
+  afternoon:
+    - "post-lunch nap."
+    - "stretch."
+  evening:
+    - "winding down?"
+    - "anything left to land?"

@@ -65,6 +65,22 @@ describe('Indexer', () => {
     expect(after).toBe(0);
   });
 
+  it('calls onProgress once per file with monotonically increasing done', async () => {
+    const { ix } = newIndexer();
+    const calls: Array<{ done: number; total: number }> = [];
+    const stats = await ix.indexAll(FIXTURE_VAULT, {
+      onProgress: (done, total) => calls.push({ done, total }),
+    });
+    const expectedTotal = stats.notesIndexed + stats.notesSkipped;
+    expect(calls.length).toBe(expectedTotal);
+    expect(calls.length).toBeGreaterThanOrEqual(3);
+    for (let i = 0; i < calls.length; i++) {
+      const c = calls[i]!;
+      expect(c.total).toBe(expectedTotal);
+      expect(c.done).toBe(i + 1);
+    }
+  });
+
   it('idempotently re-indexes the same file', async () => {
     const { db, ix } = newIndexer();
     await ix.indexAll(FIXTURE_VAULT);
