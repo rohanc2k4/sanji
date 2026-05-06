@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ChatEvent, ChatOpts, ProviderAdapter } from '@sanji/shared';
-import { runSkill } from './runSkill.js';
+import { runSkill, runSkillWithUsage } from './runSkill.js';
 import type { Skill } from './parse.js';
 
 class StubAdapter implements ProviderAdapter {
@@ -80,5 +80,17 @@ describe('runSkill', () => {
         abortSignal: ctrl.signal,
       }),
     ).rejects.toThrow(/abort/i);
+  });
+
+  it('runSkillWithUsage returns aggregated text + the usage block', async () => {
+    const adapter = new StubAdapter(['hi ', 'there']);
+    const r = await runSkillWithUsage({
+      skill,
+      input: 'x',
+      adapter,
+      model: 'claude-sonnet-4-6',
+    });
+    expect(r.text).toBe('hi there');
+    expect(r.usage).toEqual({ input: 100, output: 50 });
   });
 });
