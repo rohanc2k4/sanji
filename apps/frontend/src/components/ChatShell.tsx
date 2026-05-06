@@ -10,6 +10,8 @@ export interface ChatShellProps {
   onCloseEditor: () => void;
   onFilesDropped: (files: File[]) => void;
   onAddSource: () => void;
+  onNoteSaved?: (path: string) => void;
+  sidebarRefreshKey?: number;
 }
 
 export function ChatShell({
@@ -18,6 +20,8 @@ export function ChatShell({
   onCloseEditor,
   onFilesDropped,
   onAddSource,
+  onNoteSaved,
+  sidebarRefreshKey,
 }: ChatShellProps) {
   const editorOpen = editorPath !== null;
   const chat = useChat();
@@ -41,6 +45,7 @@ export function ChatShell({
             selectedPath={editorPath}
             onSelect={onOpenEditor}
             onAddSource={onAddSource}
+            refreshKey={sidebarRefreshKey}
           />
         </aside>
 
@@ -62,7 +67,7 @@ export function ChatShell({
             editorOpen ? 'translate-x-0' : 'translate-x-full',
           ].join(' ')}
         >
-          <EditorPanel path={editorPath} onClose={onCloseEditor} />
+          <EditorPanel path={editorPath} onClose={onCloseEditor} onSaved={onNoteSaved} />
         </aside>
       </div>
     </div>

@@ -10,6 +10,7 @@ export interface SourcesSidebarProps {
   selectedPath: string | null;
   onSelect: (path: string) => void;
   onAddSource: () => void;
+  refreshKey?: number;
 }
 
 interface TreeNode {
@@ -129,7 +130,7 @@ type LoadState =
   | { kind: 'error'; message: string }
   | { kind: 'ready'; tree: TreeNode[] };
 
-export function SourcesSidebar({ selectedPath, onSelect, onAddSource }: SourcesSidebarProps) {
+export function SourcesSidebar({ selectedPath, onSelect, onAddSource, refreshKey = 0 }: SourcesSidebarProps) {
   const [state, setState] = useState<LoadState>({ kind: 'loading' });
   const [reloadKey, setReloadKey] = useState(0);
   const [autoRetried, setAutoRetried] = useState(false);
@@ -156,7 +157,7 @@ export function SourcesSidebar({ selectedPath, onSelect, onAddSource }: SourcesS
     return () => {
       cancelled = true;
     };
-  }, [reloadKey]);
+  }, [reloadKey, refreshKey]);
 
   const isReadyEmpty = state.kind === 'ready' && state.tree.length === 0;
 

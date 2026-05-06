@@ -53,7 +53,12 @@ function ChatRoot() {
   const [editorPath, setEditorPath] = useState<string | null>(null);
   const [rows, setRows] = useState<StatusRow[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
+  const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
   const ctrls = useRef<Map<string, AbortController>>(new Map());
+
+  function bumpSidebar() {
+    setSidebarRefreshKey((k) => k + 1);
+  }
 
   async function startIngestFiles(files: File[]) {
     for (const f of files) {
@@ -62,6 +67,7 @@ function ChatRoot() {
         for await (const ev of ingestFile(f, ctrl.signal)) {
           if (ev.kind === 'queued') ctrls.current.set(ev.fileId, ctrl);
           setRows((prev) => applyIngestEvent(prev, ev));
+          if (ev.kind === 'done') bumpSidebar();
         }
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') continue;
@@ -78,6 +84,7 @@ function ChatRoot() {
       for await (const ev of ingestText(input, ctrl.signal)) {
         if (ev.kind === 'queued') ctrls.current.set(ev.fileId, ctrl);
         setRows((prev) => applyIngestEvent(prev, ev));
+        if (ev.kind === 'done') bumpSidebar();
       }
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return;
@@ -103,6 +110,8 @@ function ChatRoot() {
         onCloseEditor={() => setEditorPath(null)}
         onFilesDropped={startIngestFiles}
         onAddSource={() => setModalOpen(true)}
+        onNoteSaved={bumpSidebar}
+        sidebarRefreshKey={sidebarRefreshKey}
       />
       <IngestStatusPanel
         rows={rows}

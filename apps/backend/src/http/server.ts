@@ -28,7 +28,7 @@ function buildRoutes(
   if (deps.kind === 'ready') {
     app.route('/', configRoute({ paths: deps.paths }));
     app.route('/', vaultRoute({ db: deps.db, paths: deps.paths }));
-    app.route('/', notesRoute({ paths: deps.paths }));
+    app.route('/', notesRoute({ paths: deps.paths, repo: deps.repo }));
     app.route(
       '/',
       chatRoute({

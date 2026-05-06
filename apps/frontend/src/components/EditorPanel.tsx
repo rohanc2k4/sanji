@@ -22,9 +22,10 @@ import {
 export interface EditorPanelProps {
   path: string | null;
   onClose: () => void;
+  onSaved?: (path: string) => void;
 }
 
-export function EditorPanel({ path, onClose }: EditorPanelProps) {
+export function EditorPanel({ path, onClose, onSaved }: EditorPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   // dirtyRef and the dirty state are deliberately kept in sync. The Cmd-S
@@ -57,6 +58,7 @@ export function EditorPanel({ path, onClose }: EditorPanelProps) {
       toast.success(`Saved ${res.path}`, {
         description: res.snapshot ? `Previous version snapshot at ${res.snapshot}` : 'New file created.',
       });
+      onSaved?.(res.path);
     } catch (err) {
       const msg = isApiError(err) ? err.message : err instanceof Error ? err.message : String(err);
       toast.error('Save failed', { description: msg });
@@ -78,7 +80,11 @@ export function EditorPanel({ path, onClose }: EditorPanelProps) {
         body = note.body;
       } catch (err) {
         if (cancelled) return;
-        if (!(isApiError(err) && err.code === 'HTTP_404')) {
+        // 404 (HTTP_404 from generic client, or NOT_FOUND from notes route)
+        // means "new file, write on save" — open the editor with empty body
+        // and don't toast.
+        const code = isApiError(err) ? err.code : null;
+        if (code !== 'HTTP_404' && code !== 'NOT_FOUND') {
           const msg = isApiError(err) ? err.message : err instanceof Error ? err.message : String(err);
           toast.error('Could not load note', { description: msg });
         }

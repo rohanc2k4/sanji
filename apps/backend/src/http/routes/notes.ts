@@ -7,8 +7,9 @@ import { writeNoteTool } from '../../tools/write-note.js';
 import { validateVaultRelativePath } from '../../tools/validation.js';
 import type { VaultPaths } from '../../config/paths.js';
 import type { ToolContext } from '../../tools/types.js';
+import type { IndexRepo } from '../../index/repo.js';
 
-export function notesRoute(deps: { paths: VaultPaths }) {
+export function notesRoute(deps: { paths: VaultPaths; repo?: IndexRepo }) {
   const r = new Hono();
 
   r.get('/api/notes/*', async (c) => {
@@ -45,6 +46,16 @@ export function notesRoute(deps: { paths: VaultPaths }) {
     const ctx = { paths: deps.paths } as unknown as ToolContext;
     try {
       const result = await writeNoteTool.run({ path: validated, content: body.content }, ctx);
+      // Upsert into the notes index so the saved file appears in the
+      // SourcesSidebar listing immediately. The chokidar watcher and
+      // chunk/embedding pipeline catch up async; for sidebar visibility,
+      // having the notes row is enough.
+      if (deps.repo) {
+        const abs = join(deps.paths.vault, validated);
+        const mtimeMs = statSync(abs).mtimeMs;
+        const parsed = parseNote(validated, body.content, mtimeMs);
+        deps.repo.upsertNote(parsed.note);
+      }
       return c.json(JSON.parse(result));
     } catch (err) {
       return c.json({ kind: 'api-error', code: 'WRITE_FAILED', message: (err as Error).message }, 400);

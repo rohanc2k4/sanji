@@ -1,5 +1,5 @@
 import { writeFile, mkdir, rename } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { existsSync, statSync } from 'node:fs';
 import { join, basename, extname } from 'node:path';
 import type { ProviderAdapter, IngestEvent, FileFormat, NoteFrontmatter } from '@sanji/shared';
 import type { Skill } from '../skills/parse.js';
@@ -8,6 +8,7 @@ import type { IndexRepo } from '../index/repo.js';
 import { detectFormat, extractByFormat } from './extractors/index.js';
 import { rewrite } from './rewrite.js';
 import { buildVaultContext, type VaultContext } from './context.js';
+import { parseNote } from '../vault/parse.js';
 
 export interface IngestServiceDeps {
   paths: VaultPaths;
@@ -237,6 +238,16 @@ export class IngestService {
         phase: 'write', message: `Could not write inbox/${target}: ${(err as Error).message}.`,
       };
       return;
+    }
+
+    // Upsert into the notes index so the file appears in SourcesSidebar
+    // immediately. Chunk + embedding pass catches up via the watcher.
+    try {
+      const mtimeMs = statSync(targetAbs).mtimeMs;
+      const parsed = parseNote(target, composed, mtimeMs);
+      this.deps.repo.upsertNote(parsed.note);
+    } catch {
+      // Non-fatal: watcher will eventually pick the file up.
     }
 
     this.invalidateContextCache();
