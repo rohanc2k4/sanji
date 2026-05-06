@@ -77,17 +77,11 @@ export function EditorPanel({ path, onClose, onSaved }: EditorPanelProps) {
       try {
         const note = await getNote(path);
         if (cancelled) return;
-        body = note.body;
+        body = note?.body ?? '';
       } catch (err) {
         if (cancelled) return;
-        // 404 (HTTP_404 from generic client, or NOT_FOUND from notes route)
-        // means "new file, write on save" — open the editor with empty body
-        // and don't toast.
-        const code = isApiError(err) ? err.code : null;
-        if (code !== 'HTTP_404' && code !== 'NOT_FOUND') {
-          const msg = isApiError(err) ? err.message : err instanceof Error ? err.message : String(err);
-          toast.error('Could not load note', { description: msg });
-        }
+        const msg = isApiError(err) ? err.message : err instanceof Error ? err.message : String(err);
+        toast.error('Could not load note', { description: msg });
       }
       if (cancelled || !containerRef.current) return;
       const state = EditorState.create({
