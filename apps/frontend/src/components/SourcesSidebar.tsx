@@ -9,6 +9,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 export interface SourcesSidebarProps {
   selectedPath: string | null;
   onSelect: (path: string) => void;
+  onAddSource: () => void;
 }
 
 interface TreeNode {
@@ -128,7 +129,7 @@ type LoadState =
   | { kind: 'error'; message: string }
   | { kind: 'ready'; tree: TreeNode[] };
 
-export function SourcesSidebar({ selectedPath, onSelect }: SourcesSidebarProps) {
+export function SourcesSidebar({ selectedPath, onSelect, onAddSource }: SourcesSidebarProps) {
   const [state, setState] = useState<LoadState>({ kind: 'loading' });
   const [reloadKey, setReloadKey] = useState(0);
   const [autoRetried, setAutoRetried] = useState(false);
@@ -175,10 +176,19 @@ export function SourcesSidebar({ selectedPath, onSelect }: SourcesSidebarProps) 
 
   return (
     <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
-      <div className="px-4 pt-4 pb-2">
+      <div className="flex items-center justify-between px-4 pt-4 pb-2">
         <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground/70">
           Sources
         </span>
+        <Button
+          size="icon-xs"
+          variant="ghost"
+          onClick={onAddSource}
+          aria-label="Add source"
+          title="Add source"
+        >
+          <Plus />
+        </Button>
       </div>
 
       <ScrollArea className="min-h-0 flex-1">

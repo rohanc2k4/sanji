@@ -9,9 +9,16 @@ export interface ChatShellProps {
   onOpenEditor: (path: string) => void;
   onCloseEditor: () => void;
   onFilesDropped: (files: File[]) => void;
+  onAddSource: () => void;
 }
 
-export function ChatShell({ editorPath, onOpenEditor, onCloseEditor, onFilesDropped }: ChatShellProps) {
+export function ChatShell({
+  editorPath,
+  onOpenEditor,
+  onCloseEditor,
+  onFilesDropped,
+  onAddSource,
+}: ChatShellProps) {
   const editorOpen = editorPath !== null;
   const chat = useChat();
 
@@ -30,7 +37,11 @@ export function ChatShell({ editorPath, onOpenEditor, onCloseEditor, onFilesDrop
 
       <div className="relative flex flex-1 overflow-hidden">
         <aside className="w-[220px] shrink-0 border-r border-border bg-sidebar">
-          <SourcesSidebar selectedPath={editorPath} onSelect={onOpenEditor} />
+          <SourcesSidebar
+            selectedPath={editorPath}
+            onSelect={onOpenEditor}
+            onAddSource={onAddSource}
+          />
         </aside>
 
         <main className="relative flex flex-1 flex-col bg-background">
