@@ -73,6 +73,22 @@ export class IndexRepo {
     );
   }
 
+  listNotesForContext(): Array<{
+    path: string;
+    title: string | null;
+    frontmatter_json: string | null;
+    body: string;
+  }> {
+    return this.db
+      .prepare('SELECT path, title, frontmatter_json, body FROM notes ORDER BY path')
+      .all() as Array<{
+      path: string;
+      title: string | null;
+      frontmatter_json: string | null;
+      body: string;
+    }>;
+  }
+
   // ─── chunks ─────────────────────────────────────────────────────────
 
   replaceChunksForNote(notePath: string, chunks: ChunkUpsert[]): void {
