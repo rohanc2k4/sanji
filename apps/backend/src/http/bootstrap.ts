@@ -6,6 +6,7 @@ import { runMigrations } from '../db/migrate.js';
 import { FakeEmbedder, type Embedder } from '../embeddings/embedder.js';
 import { TransformersEmbedder } from '../embeddings/transformers.js';
 import { IndexRepo } from '../index/repo.js';
+import { IngestService } from '../ingest/service.js';
 import { makeAdapter } from '../llm/factory.js';
 import { loadSkills } from '../skills/loader.js';
 import { Registry } from '../tools/registry.js';
@@ -69,16 +70,31 @@ export async function bootstrapReadyDeps(vault: string): Promise<ReadyDeps> {
   registry.register(getNeighborsTool);
   registry.register(writeNoteTool);
 
+  const repo = new IndexRepo(db);
+
+  const ingestSkill = skills.find((s) => s.name === 'ingest');
+  if (!ingestSkill) {
+    throw new Error('bundled ingest skill not found in skills/');
+  }
+  const ingestService = new IngestService({
+    paths,
+    repo,
+    adapter,
+    model: cfg.models.default,
+    ingestSkill,
+  });
+
   return {
     kind: 'ready',
     paths,
     cfg: configToDto(cfg),
     db,
-    repo: new IndexRepo(db),
+    repo,
     embedder,
     adapter,
     registry,
     skills,
+    ingestService,
   };
 }
 

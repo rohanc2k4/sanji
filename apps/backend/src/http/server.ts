@@ -6,6 +6,7 @@ import { vaultRoute } from './routes/vault.js';
 import { notesRoute } from './routes/notes.js';
 import { chatRoute } from './routes/chat.js';
 import { indexingRoute } from './routes/indexing.js';
+import { ingestRoute } from './routes/ingest.js';
 import { Indexer } from '../index/indexer.js';
 import type { ServerDeps } from './deps.js';
 import { teardownReadyDeps, type ReadyDeps } from './bootstrap.js';
@@ -55,6 +56,7 @@ function buildRoutes(
       await ix.indexAll(deps.paths.vault, { onProgress: cb });
     };
     app.route('/', indexingRoute({ runIndex }));
+    app.route('/', ingestRoute({ service: deps.ingestService }));
   }
 
   return app;
