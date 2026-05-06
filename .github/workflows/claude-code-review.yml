@@ -20,10 +20,14 @@ jobs:
 
     runs-on: ubuntu-latest
     permissions:
+      # Write on pull-requests + issues is required so the code-review plugin
+      # can post the actual review comment. Read-only here silently runs Claude
+      # but produces no visible output (debug logs hidden by default).
       contents: read
-      pull-requests: read
-      issues: read
+      pull-requests: write
+      issues: write
       id-token: write
+      actions: read
 
     steps:
       - name: Checkout repository
