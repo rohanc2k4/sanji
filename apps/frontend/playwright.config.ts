@@ -17,7 +17,10 @@ export default defineConfig({
       port: 8080,
       reuseExistingServer: reuse,
       cwd: '../..',
-      env: { PORT: '8080' },
+      // Force the backend to use FakeEmbedder (no MiniLM model download) and
+      // the offline fake LLM adapter, so the bootstrap-after-init swap is fast
+      // and chat-round-trip works without a real Claude subscription auth.
+      env: { PORT: '8080', SANJI_FAKE_EMBED: '1', SANJI_OFFLINE_FAKE_LLM: '1' },
       timeout: 60_000,
     },
     {

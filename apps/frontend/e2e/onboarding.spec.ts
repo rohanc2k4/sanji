@@ -5,7 +5,9 @@ import { join } from 'node:path';
 
 let vault: string;
 
-test.beforeAll(() => {
+test.beforeEach(() => {
+  // Fresh vault per test so the post-init swap doesn't leak ready-deps across
+  // cases. Each test boots through onboarding in its own tmp dir.
   vault = mkdtempSync(join(tmpdir(), 'sanji-e2e-'));
   mkdirSync(join(vault, 'daily'));
   writeFileSync(
@@ -14,15 +16,13 @@ test.beforeAll(() => {
   );
 });
 
-test.afterAll(() => {
+test.afterEach(() => {
   rmSync(vault, { recursive: true, force: true });
 });
 
-test('onboarding flow walks vault through indexing init', async ({ page }) => {
+async function walkOnboardingThroughIndexing(page: import('@playwright/test').Page) {
   await page.goto('/');
 
-  // Onboarding renders because /api/config 404s in kind:'no-vault' mode (the
-  // configRoute is gated on kind:'ready' in apps/backend/src/http/server.ts).
   await expect(page.getByRole('heading', { name: /where does your vault live/i })).toBeVisible({
     timeout: 15_000,
   });
@@ -36,53 +36,66 @@ test('onboarding flow walks vault through indexing init', async ({ page }) => {
   // ---- Provider step ----
   await expect(page.getByRole('heading', { name: /which claude/i })).toBeVisible();
   await page.getByRole('button', { name: /claude code subscription/i }).click();
-  // testCredentials() runs a real `query()` ping against the locally-installed
-  // Claude Code CLI. In Rohan's dev env this returns ok; the assertion accepts
-  // either the success chip or any error chip so the test stays robust if the
-  // CLI isn't authed in the harness env.
-  await expect(
-    page.getByText(/credentials look good|could not verify credentials|claude code/i).first(),
-  ).toBeVisible({ timeout: 30_000 });
-  // Continue requires providerTestResult.ok === true. If the ping failed we
-  // can't proceed — surface that loudly.
-  const okChip = page.getByText(/credentials look good/i);
-  await expect(okChip).toBeVisible({ timeout: 30_000 });
+  // The webServer env sets SANJI_OFFLINE_FAKE_LLM=1 so testCredentials() returns
+  // ok without needing real Claude auth.
+  await expect(page.getByText(/credentials look good/i)).toBeVisible({ timeout: 30_000 });
   await page.getByRole('button', { name: /^continue$/i }).click();
 
-  // ---- Model step ----
+  // ---- Model step (recommended preselected) ----
   await expect(page.getByRole('heading', { name: /default model/i })).toBeVisible();
-  // Recommended option is preselected via initialOnboardingState
-  // (modelDefault: 'claude-sonnet-4-6'); just continue.
   await page.getByRole('button', { name: /^continue$/i }).click();
 
-  // ---- Calendar step (skip) ----
+  // ---- Calendar (skip) ----
   await expect(page.getByRole('heading', { name: /add a calendar/i })).toBeVisible();
   await page.getByRole('button', { name: /^continue$/i }).click();
 
-  // ---- Tavily step (skip) ----
+  // ---- Tavily (skip) ----
   await expect(page.getByRole('heading', { name: /tavily/i })).toBeVisible();
   await page.getByRole('button', { name: /^continue$/i }).click();
 
   // ---- Indexing step ----
-  // Clicking "Start indexing" fires initOnboarding (works in kind:'no-vault'
-  // because the onboarding route is mounted unconditionally), then opens the
-  // SSE stream at /api/indexing/status. That endpoint is gated on
-  // kind:'ready' so it 404s; IndexingStep catches that and renders an error
-  // block + Retry. We assert that error state — the runtime deps-swap fix
-  // that would let the SSE work after init is a known follow-up (see the
-  // skipped test below).
+  // Clicking "Start indexing" fires initOnboarding which writes the config
+  // and bootstraps the kind:'ready' deps via the runtime swap in
+  // apps/backend/src/http/server.ts. The SSE then opens against the live
+  // /api/indexing/status route and streams progress events; FakeEmbedder
+  // makes per-note indexing fast so the 1-note fixture finishes in ms.
   await expect(page.getByRole('heading', { name: /indexing your notes/i })).toBeVisible();
   await page.getByRole('button', { name: /start indexing/i }).click();
-  await expect(
-    page.getByText(/backend may need a restart|indexing stream broken|HTTP 404/i),
-  ).toBeVisible({ timeout: 30_000 });
-});
+  await expect(page.getByText(/indexed 1 note/i)).toBeVisible({ timeout: 30_000 });
 
-test.skip('full golden path through chat round-trip', async () => {
-  // SKIP: blocked on the runtime deps-swap fix in apps/backend/src/index.ts.
-  // Currently the backend boots in kind:'no-vault' and doesn't pick up the
-  // new vault config after POST /api/onboarding/init. Until init can flip
-  // the live deps to kind:'ready', the SSE stream at /api/indexing/status
-  // 404s and the chat round-trip can't run end-to-end. Unskip once that
-  // wiring lands.
+  // Continue gate canAdvance checks totalNotes>0 && indexedNotes>=totalNotes.
+  await page.getByRole('button', { name: /^continue$/i }).click();
+
+  // ---- Done step ----
+  await expect(page.getByRole('heading', { name: /you're set/i })).toBeVisible();
+  await page.getByRole('button', { name: /open sanji/i }).click();
+
+  // ---- Chat shell ----
+  await expect(page.locator('header').getByText(/sanji/i).first()).toBeVisible();
+  await expect(page.getByText(/^sources$/i)).toBeVisible();
+}
+
+// Merged into a single sequential test because Playwright shares the backend
+// process across tests in this file: the runtime deps swap inside makeServer
+// flips the backend to kind:'ready' on the first test's init call, and the
+// flip persists for subsequent tests — so a second test that calls page.goto('/')
+// would route straight to the ChatShell and skip the onboarding wizard. The
+// flow below is the full v0.1 golden path: onboard → chat round-trip.
+test('full golden path: onboarding through chat round-trip', async ({ page }) => {
+  await walkOnboardingThroughIndexing(page);
+
+  // The composer is the textarea inside the bg-card panel at the bottom of
+  // the chat column. Type a message and fire ⌘↵ (or Ctrl+Enter on Linux).
+  const composer = page.getByPlaceholder(/ask anything/i);
+  await composer.fill('hi');
+
+  // Cmd+Enter on macOS, Control+Enter elsewhere. The Composer accepts either
+  // modifier (the keydown handler checks both metaKey and ctrlKey).
+  await composer.press(process.platform === 'darwin' ? 'Meta+Enter' : 'Control+Enter');
+
+  // The user turn appears right-aligned in bg-muted. The assistant turn comes
+  // from OfflineFakeAdapter (env SANJI_OFFLINE_FAKE_LLM=1) which streams
+  // "[offline-fake reply for model=<id>]" back via SSE.
+  await expect(page.getByText('hi').first()).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText(/offline-fake reply/i)).toBeVisible({ timeout: 30_000 });
 });

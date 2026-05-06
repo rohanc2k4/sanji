@@ -9,11 +9,24 @@ import { runMigrations } from '../../db/migrate.js';
 import { makeAdapter } from '../../llm/factory.js';
 import { ConfigSchema } from '@sanji/shared';
 import { dtoToConfig } from '../dto.js';
+import { bootstrapReadyDeps } from '../bootstrap.js';
+import type { ServerDeps } from '../deps.js';
 import type {
   ConfigDto,
   VaultValidateResult,
   ProviderTestResult,
 } from '@sanji/shared';
+
+export interface OnboardingRouteDeps {
+  /**
+   * Optional callback fired after init writes the config and migrates the db.
+   * In the live server this is wired to the runtime route swap so the process
+   * can flip from `kind:'no-vault'` to `kind:'ready'` without a restart. When
+   * absent (e.g. unit tests that mount the route in isolation), init still
+   * runs migrations directly so the route stays self-contained.
+   */
+  onReady?: (next: ServerDeps) => Promise<void>;
+}
 
 const ValidateVaultBody = z.object({ vault: z.string().min(1) });
 
@@ -56,7 +69,7 @@ function countMdFiles(dir: string): number {
   return count;
 }
 
-export function onboardingRoute() {
+export function onboardingRoute(deps: OnboardingRouteDeps = {}) {
   const r = new Hono();
 
   r.post('/api/onboarding/validate-vault', async (c) => {
@@ -125,12 +138,31 @@ export function onboardingRoute() {
     const dto = parsed.data.config as unknown as ConfigDto;
     const merged = dtoToConfig(dto, initial);
     saveConfig(paths, merged); // overwrite with chosen config
-    const db = openDb(paths.indexDb);
-    try {
-      runMigrations(db);
-    } finally {
-      db.close();
+
+    if (deps.onReady) {
+      // Live-server path: bootstrap full kind:'ready' deps and swap the routes.
+      // bootstrapReadyDeps re-opens the db and runs migrations, so we do not
+      // need a separate migrations pass here.
+      try {
+        const ready = await bootstrapReadyDeps(parsed.data.vault);
+        await deps.onReady(ready);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return c.json(
+          { kind: 'api-error', code: 'BOOTSTRAP_FAILED', message },
+          500,
+        );
+      }
+    } else {
+      // Unit-test path: no swap callback, so run migrations inline like before.
+      const db = openDb(paths.indexDb);
+      try {
+        runMigrations(db);
+      } finally {
+        db.close();
+      }
     }
+
     return c.json(dto);
   });
 

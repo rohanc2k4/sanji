@@ -3,8 +3,8 @@ import { makeServer } from './server.js';
 
 describe('makeServer', () => {
   it('serves /health with the version', async () => {
-    const app = makeServer({ kind: 'no-vault' });
-    const res = await app.request('/health');
+    const handle = makeServer({ kind: 'no-vault' });
+    const res = await handle.app.request('/health');
     expect(res.status).toBe(200);
     const body = await res.json() as { status: string; service: string; version: string };
     expect(body.status).toBe('ok');
@@ -13,8 +13,8 @@ describe('makeServer', () => {
   });
 
   it('serves the root marketing line', async () => {
-    const app = makeServer({ kind: 'no-vault' });
-    const res = await app.request('/');
+    const handle = makeServer({ kind: 'no-vault' });
+    const res = await handle.app.request('/');
     expect(res.status).toBe(200);
     expect(await res.text()).toMatch(/sanji backend/i);
   });

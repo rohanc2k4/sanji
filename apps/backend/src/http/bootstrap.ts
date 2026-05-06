@@ -1,0 +1,96 @@
+import type { ChatEvent, ChatOpts, ProviderAdapter } from '@sanji/shared';
+import { resolveVaultPaths } from '../config/paths.js';
+import { loadOrInitConfig } from '../config/loader.js';
+import { openDb } from '../db/client.js';
+import { runMigrations } from '../db/migrate.js';
+import { FakeEmbedder, type Embedder } from '../embeddings/embedder.js';
+import { TransformersEmbedder } from '../embeddings/transformers.js';
+import { IndexRepo } from '../index/repo.js';
+import { makeAdapter } from '../llm/factory.js';
+import { loadSkills } from '../skills/loader.js';
+import { Registry } from '../tools/registry.js';
+import { readNoteTool } from '../tools/read-note.js';
+import { searchVaultTool } from '../tools/search-vault.js';
+import { semanticSearchTool } from '../tools/semantic-search.js';
+import { getNeighborsTool } from '../tools/get-neighbors.js';
+import { writeNoteTool } from '../tools/write-note.js';
+import { configToDto } from './dto.js';
+import type { ServerDeps } from './deps.js';
+
+export type ReadyDeps = Extract<ServerDeps, { kind: 'ready' }>;
+
+class OfflineFakeAdapter implements ProviderAdapter {
+  async *chat(opts: ChatOpts): AsyncIterable<ChatEvent> {
+    yield { type: 'text_delta', text: `[offline-fake reply for model=${opts.model}]` };
+    yield { type: 'message_stop', usage: { input: 0, output: 0 } };
+  }
+  async getAvailableModels() {
+    return [];
+  }
+  async testCredentials() {
+    return { ok: true as const };
+  }
+}
+
+function buildEmbedder(): Embedder {
+  return process.env.SANJI_FAKE_EMBED === '1' ? new FakeEmbedder() : new TransformersEmbedder();
+}
+
+function buildAdapter(cfg: Parameters<typeof makeAdapter>[0]): ProviderAdapter {
+  return process.env.SANJI_OFFLINE_FAKE_LLM === '1' ? new OfflineFakeAdapter() : makeAdapter(cfg);
+}
+
+/**
+ * Stand up everything `kind: 'ready'` routes need from a vault path. Used by
+ * the onboarding init handler to flip the live process from no-vault to ready
+ * without a restart, and at boot time when an existing vault is detected.
+ *
+ * The returned db handle and embedder stay open. Callers (specifically the
+ * server's swap function) are responsible for closing the previous deps when
+ * a new bootstrap supersedes them.
+ */
+export async function bootstrapReadyDeps(vault: string): Promise<ReadyDeps> {
+  const paths = resolveVaultPaths(vault);
+  const cfg = loadOrInitConfig(paths);
+  const db = openDb(paths.indexDb);
+  runMigrations(db);
+  const embedder = buildEmbedder();
+  const adapter = buildAdapter(cfg);
+
+  const { skills, errors } = await loadSkills(paths);
+  for (const e of errors) {
+    process.stderr.write(`skill load error: ${e.source}: ${e.message}\n`);
+  }
+
+  const registry = new Registry();
+  registry.register(readNoteTool);
+  registry.register(searchVaultTool);
+  registry.register(semanticSearchTool);
+  registry.register(getNeighborsTool);
+  registry.register(writeNoteTool);
+
+  return {
+    kind: 'ready',
+    paths,
+    cfg: configToDto(cfg),
+    db,
+    repo: new IndexRepo(db),
+    embedder,
+    adapter,
+    registry,
+    skills,
+  };
+}
+
+export async function teardownReadyDeps(deps: ReadyDeps): Promise<void> {
+  try {
+    await deps.embedder.close();
+  } catch {
+    /* best effort */
+  }
+  try {
+    deps.db.close();
+  } catch {
+    /* best effort */
+  }
+}
