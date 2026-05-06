@@ -72,4 +72,49 @@ describe('notes route', () => {
     expect(indexed).not.toBeNull();
     expect(indexed?.title).toBe('New');
   });
+
+  it('POST /api/notes/rename moves the file on disk and updates the index', async () => {
+    writeFileSync(join(dir, 'old.md'), '---\ntitle: Old\n---\nbody');
+    const { app, repo, paths } = mount();
+    // Seed the index so we can verify the swap.
+    repo.upsertNote({
+      path: 'old.md',
+      mtimeMs: Date.now(),
+      body: 'body',
+      frontmatter: { title: 'Old' },
+      title: 'Old',
+    });
+
+    const res = await app.request('/api/notes/rename', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ from: 'old.md', to: 'inbox/new.md' }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json() as { from: string; to: string };
+    expect(body).toEqual({ from: 'old.md', to: 'inbox/new.md' });
+    expect(readFileSync(join(paths.vault, 'inbox/new.md'), 'utf8')).toContain('body');
+    expect(repo.getNote('old.md')).toBeNull();
+    expect(repo.getNote('inbox/new.md')?.title).toBe('Old');
+  });
+
+  it('POST /api/notes/rename 404s when source missing, 409s when target exists', async () => {
+    writeFileSync(join(dir, 'a.md'), 'a');
+    writeFileSync(join(dir, 'b.md'), 'b');
+    const { app } = mount();
+
+    const missing = await app.request('/api/notes/rename', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ from: 'gone.md', to: 'somewhere.md' }),
+    });
+    expect(missing.status).toBe(404);
+
+    const collision = await app.request('/api/notes/rename', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ from: 'a.md', to: 'b.md' }),
+    });
+    expect(collision.status).toBe(409);
+  });
 });

@@ -60,6 +60,11 @@ function ChatRoot() {
     setSidebarRefreshKey((k) => k + 1);
   }
 
+  function handleRenamed(from: string, to: string) {
+    setEditorPath((curr) => (curr === from ? to : curr));
+    bumpSidebar();
+  }
+
   async function startIngestFiles(files: File[]) {
     for (const f of files) {
       const ctrl = new AbortController();
@@ -111,6 +116,7 @@ function ChatRoot() {
         onFilesDropped={startIngestFiles}
         onAddSource={() => setModalOpen(true)}
         onNoteSaved={bumpSidebar}
+        onNoteRenamed={handleRenamed}
         sidebarRefreshKey={sidebarRefreshKey}
       />
       <IngestStatusPanel

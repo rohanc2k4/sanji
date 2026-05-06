@@ -11,6 +11,7 @@ export interface ChatShellProps {
   onFilesDropped: (files: File[]) => void;
   onAddSource: () => void;
   onNoteSaved?: (path: string) => void;
+  onNoteRenamed?: (from: string, to: string) => void;
   sidebarRefreshKey?: number;
 }
 
@@ -21,6 +22,7 @@ export function ChatShell({
   onFilesDropped,
   onAddSource,
   onNoteSaved,
+  onNoteRenamed,
   sidebarRefreshKey,
 }: ChatShellProps) {
   const editorOpen = editorPath !== null;
@@ -46,6 +48,7 @@ export function ChatShell({
             onSelect={onOpenEditor}
             onAddSource={onAddSource}
             refreshKey={sidebarRefreshKey}
+            onRenamed={onNoteRenamed}
           />
         </aside>
 

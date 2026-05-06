@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ChevronRight, FileText, Inbox, Plus } from 'lucide-react';
+import { toast } from 'sonner';
 import type { NoteSummary } from '@sanji/shared';
 import { isApiError } from '@sanji/shared';
 import { listNotes } from '@/api/vault';
+import { renameNote } from '@/api/notes';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
@@ -11,6 +13,7 @@ export interface SourcesSidebarProps {
   onSelect: (path: string) => void;
   onAddSource: () => void;
   refreshKey?: number;
+  onRenamed?: (from: string, to: string) => void;
 }
 
 interface TreeNode {
@@ -68,20 +71,43 @@ interface TreeRowProps {
   node: TreeNode;
   depth: number;
   selectedPath: string | null;
+  renamingPath: string | null;
   onSelect: (path: string) => void;
+  onStartRename: (path: string) => void;
+  onCommitRename: (from: string, draft: string) => void;
+  onCancelRename: () => void;
 }
 
-function TreeRow({ node, depth, selectedPath, onSelect }: TreeRowProps) {
+function TreeRow(props: TreeRowProps) {
+  const { node, depth, selectedPath, renamingPath, onSelect } = props;
   const indent = 8 + depth * 12;
   if (node.isLeaf) {
     const note = node.note!;
     const isSelected = selectedPath === note.path;
+    const isRenaming = renamingPath === note.path;
+    if (isRenaming) {
+      return (
+        <li>
+          <RenameRow
+            path={note.path}
+            indent={indent}
+            initialDraft={node.name.replace(/\.md$/, '')}
+            onCommit={(draft) => props.onCommitRename(note.path, draft)}
+            onCancel={props.onCancelRename}
+          />
+        </li>
+      );
+    }
     const label = note.title ?? node.name.replace(/\.md$/, '');
     return (
       <li>
         <button
           type="button"
           onClick={() => onSelect(note.path)}
+          onDoubleClick={(e) => {
+            e.preventDefault();
+            props.onStartRename(note.path);
+          }}
           title={`${note.path} · ${relTime(note.mtimeMs)}`}
           style={{ paddingLeft: indent }}
           className={[
@@ -115,12 +141,59 @@ function TreeRow({ node, depth, selectedPath, onSelect }: TreeRowProps) {
               node={c}
               depth={depth + 1}
               selectedPath={selectedPath}
+              renamingPath={renamingPath}
               onSelect={onSelect}
+              onStartRename={props.onStartRename}
+              onCommitRename={props.onCommitRename}
+              onCancelRename={props.onCancelRename}
             />
           ))}
         </ul>
       </details>
     </li>
+  );
+}
+
+interface RenameRowProps {
+  path: string;
+  indent: number;
+  initialDraft: string;
+  onCommit: (draft: string) => void;
+  onCancel: () => void;
+}
+
+function RenameRow({ indent, initialDraft, onCommit, onCancel }: RenameRowProps) {
+  const [draft, setDraft] = useState(initialDraft);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, []);
+
+  return (
+    <div
+      style={{ paddingLeft: indent }}
+      className="flex h-7 w-full items-center gap-1.5 rounded pr-2 text-sm"
+    >
+      <FileText className="size-3.5 shrink-0 text-muted-foreground/60" />
+      <input
+        ref={inputRef}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            onCommit(draft);
+          } else if (e.key === 'Escape') {
+            e.preventDefault();
+            onCancel();
+          }
+        }}
+        onBlur={() => onCommit(draft)}
+        className="h-6 min-w-0 flex-1 rounded border border-input bg-background px-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+      />
+    </div>
   );
 }
 
@@ -130,10 +203,18 @@ type LoadState =
   | { kind: 'error'; message: string }
   | { kind: 'ready'; tree: TreeNode[] };
 
-export function SourcesSidebar({ selectedPath, onSelect, onAddSource, refreshKey = 0 }: SourcesSidebarProps) {
+export function SourcesSidebar({
+  selectedPath,
+  onSelect,
+  onAddSource,
+  refreshKey = 0,
+  onRenamed,
+}: SourcesSidebarProps) {
   const [state, setState] = useState<LoadState>({ kind: 'loading' });
   const [reloadKey, setReloadKey] = useState(0);
   const [autoRetried, setAutoRetried] = useState(false);
+  const [renamingPath, setRenamingPath] = useState<string | null>(null);
+  const renameInFlight = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -174,6 +255,41 @@ export function SourcesSidebar({ selectedPath, onSelect, onAddSource, refreshKey
     }, 2000);
     return () => clearTimeout(timer);
   }, [isReadyEmpty, autoRetried]);
+
+  async function commitRename(from: string, draft: string) {
+    if (renameInFlight.current) return;
+    const trimmed = draft.trim();
+    if (!trimmed || trimmed === from.split('/').pop()?.replace(/\.md$/, '')) {
+      setRenamingPath(null);
+      return;
+    }
+    if (trimmed.includes('/')) {
+      toast.error('Rename failed', { description: 'Slashes are not allowed; use drag-drop to move (coming soon).' });
+      setRenamingPath(null);
+      return;
+    }
+    const parent = from.includes('/') ? from.slice(0, from.lastIndexOf('/')) : '';
+    const basename = trimmed.endsWith('.md') ? trimmed : `${trimmed}.md`;
+    const to = parent ? `${parent}/${basename}` : basename;
+    if (to === from) {
+      setRenamingPath(null);
+      return;
+    }
+    renameInFlight.current = true;
+    try {
+      await renameNote(from, to);
+      setRenamingPath(null);
+      setReloadKey((k) => k + 1);
+      onRenamed?.(from, to);
+    } catch (err) {
+      const msg =
+        isApiError(err) ? err.message : err instanceof Error ? err.message : String(err);
+      toast.error('Rename failed', { description: msg });
+      setRenamingPath(null);
+    } finally {
+      renameInFlight.current = false;
+    }
+  }
 
   return (
     <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
@@ -229,7 +345,11 @@ export function SourcesSidebar({ selectedPath, onSelect, onAddSource, refreshKey
                 node={n}
                 depth={0}
                 selectedPath={selectedPath}
+                renamingPath={renamingPath}
                 onSelect={onSelect}
+                onStartRename={setRenamingPath}
+                onCommitRename={commitRename}
+                onCancelRename={() => setRenamingPath(null)}
               />
             ))}
           </ul>

@@ -27,3 +27,9 @@ export const putNote = (path: string, content: string) =>
     `/api/notes/${encodeURIComponent(path)}`,
     { method: 'PUT', body: JSON.stringify({ content }) },
   );
+
+export const renameNote = (from: string, to: string) =>
+  apiFetch<{ from: string; to: string }>('/api/notes/rename', {
+    method: 'POST',
+    body: JSON.stringify({ from, to }),
+  });
