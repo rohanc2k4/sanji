@@ -1,11 +1,14 @@
 import type { ConfigDto, ProviderTestResult, VaultValidateResult } from '@sanji/shared';
 
+// Calendar + tavily steps are scoped for v0.3 (planning rituals: /daily,
+// /research, web_search). v0.1 onboarding ships with just the study-buddy
+// path: vault → provider → model → indexing → done. The backend config
+// schema keeps `calendar` and `search` entries with empty defaults so v0.3
+// can re-add the steps without backend churn.
 export type OnboardingStep =
   | 'vault'
   | 'provider'
   | 'model'
-  | 'calendar'
-  | 'tavily'
   | 'indexing'
   | 'done';
 
@@ -18,8 +21,6 @@ export interface OnboardingState {
   providerTestResult: ProviderTestResult | null;
   modelDefault: string;
   modelHeavy: string;
-  calendarUrls: Array<{ label: string; url: string }>;
-  tavilyKey: string;
   indexedNotes: number;
   totalNotes: number;
   error: string | null;
@@ -34,8 +35,6 @@ export const initialOnboardingState: OnboardingState = {
   providerTestResult: null,
   modelDefault: 'claude-sonnet-4-6',
   modelHeavy: 'claude-opus-4-7',
-  calendarUrls: [],
-  tavilyKey: '',
   indexedNotes: 0,
   totalNotes: 0,
   error: null,
@@ -50,27 +49,14 @@ export type OnboardingAction =
       testResult: ProviderTestResult;
     }
   | { type: 'set-model'; defaultModel: string; heavyModel: string }
-  | { type: 'add-calendar-url'; url: { label: string; url: string } }
-  | { type: 'remove-calendar-url'; index: number }
-  | { type: 'set-tavily'; key: string }
   | { type: 'index-progress'; done: number; total: number }
   | { type: 'next' }
   | { type: 'back' }
   | { type: 'set-error'; message: string | null };
 
-const ORDER: OnboardingStep[] = [
-  'vault',
-  'provider',
-  'model',
-  'calendar',
-  'tavily',
-  'indexing',
-  'done',
-];
-const SKIPPABLE: ReadonlySet<OnboardingStep> = new Set(['calendar', 'tavily']);
+const ORDER: OnboardingStep[] = ['vault', 'provider', 'model', 'indexing', 'done'];
 
 function canAdvance(state: OnboardingState): boolean {
-  if (SKIPPABLE.has(state.step)) return true;
   switch (state.step) {
     case 'vault':
       return state.vaultValidation?.ok === true;
@@ -82,9 +68,6 @@ function canAdvance(state: OnboardingState): boolean {
       return state.totalNotes > 0 && state.indexedNotes >= state.totalNotes;
     case 'done':
       return false;
-    case 'calendar':
-    case 'tavily':
-      return true;
   }
 }
 
@@ -101,15 +84,6 @@ export function onboardingReducer(s: OnboardingState, a: OnboardingAction): Onbo
       };
     case 'set-model':
       return { ...s, modelDefault: a.defaultModel, modelHeavy: a.heavyModel };
-    case 'add-calendar-url':
-      return { ...s, calendarUrls: [...s.calendarUrls, a.url] };
-    case 'remove-calendar-url':
-      return {
-        ...s,
-        calendarUrls: s.calendarUrls.filter((_, i) => i !== a.index),
-      };
-    case 'set-tavily':
-      return { ...s, tavilyKey: a.key };
     case 'index-progress':
       return { ...s, indexedNotes: a.done, totalNotes: a.total };
     case 'set-error':
@@ -134,8 +108,8 @@ export function buildConfig(s: OnboardingState): ConfigDto {
   return {
     provider,
     models: { default: s.modelDefault, heavy: s.modelHeavy },
-    calendar: { urls: s.calendarUrls, pollIntervalMinutes: 5 },
-    search: { tavilyApiKey: s.tavilyKey },
+    calendar: { urls: [], pollIntervalMinutes: 5 },
+    search: { tavilyApiKey: '' },
     indexing: {
       chunkSizeTokens: 500,
       chunkOverlapTokens: 50,

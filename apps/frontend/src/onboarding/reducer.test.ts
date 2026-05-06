@@ -58,7 +58,7 @@ describe('onboardingReducer', () => {
     expect(s.step).toBe('model');
   });
 
-  it('next from model requires modelDefault', () => {
+  it('next from model requires modelDefault, then advances to indexing', () => {
     const noModel: OnboardingState = {
       ...initialOnboardingState,
       step: 'model',
@@ -66,14 +66,7 @@ describe('onboardingReducer', () => {
     };
     expect(onboardingReducer(noModel, { type: 'next' }).step).toBe('model');
     const withModel: OnboardingState = { ...noModel, modelDefault: 'claude-sonnet-4-6' };
-    expect(onboardingReducer(withModel, { type: 'next' }).step).toBe('calendar');
-  });
-
-  it('skippable steps (calendar, tavily) advance unconditionally', () => {
-    const cal: OnboardingState = { ...initialOnboardingState, step: 'calendar' };
-    expect(onboardingReducer(cal, { type: 'next' }).step).toBe('tavily');
-    const tav: OnboardingState = { ...initialOnboardingState, step: 'tavily' };
-    expect(onboardingReducer(tav, { type: 'next' }).step).toBe('indexing');
+    expect(onboardingReducer(withModel, { type: 'next' }).step).toBe('indexing');
   });
 
   it('next from indexing requires complete progress', () => {
@@ -98,19 +91,6 @@ describe('onboardingReducer', () => {
     expect(onboardingReducer(s, { type: 'back' }).step).toBe('vault');
   });
 
-  it('add-calendar-url appends and accumulates', () => {
-    let s = onboardingReducer(initialOnboardingState, {
-      type: 'add-calendar-url',
-      url: { label: 'home', url: 'https://example.com/a.ics' },
-    });
-    s = onboardingReducer(s, {
-      type: 'add-calendar-url',
-      url: { label: 'work', url: 'https://example.com/b.ics' },
-    });
-    expect(s.calendarUrls).toHaveLength(2);
-    expect(s.calendarUrls[0]!.label).toBe('home');
-  });
-
   it('index-progress sets done + total', () => {
     const s = onboardingReducer(initialOnboardingState, {
       type: 'index-progress',
@@ -133,7 +113,7 @@ describe('onboardingReducer', () => {
 });
 
 describe('buildConfig', () => {
-  it('produces a ConfigDto from a filled state', () => {
+  it('produces a ConfigDto from a filled state with empty calendar + search defaults', () => {
     const filled: OnboardingState = {
       ...initialOnboardingState,
       step: 'indexing',
@@ -143,17 +123,17 @@ describe('buildConfig', () => {
       providerTestResult: { ok: true },
       modelDefault: 'claude-sonnet-4-6',
       modelHeavy: 'claude-opus-4-7',
-      calendarUrls: [{ label: 'home', url: 'https://example.com/a.ics' }],
-      tavilyKey: 'tv-test',
     };
     const cfg = buildConfig(filled);
     expect(cfg.provider.mode).toBe('claude-code');
     expect(cfg.provider.anthropicApiKey).toBeUndefined();
     expect(cfg.models.default).toBe('claude-sonnet-4-6');
     expect(cfg.models.heavy).toBe('claude-opus-4-7');
-    expect(cfg.calendar.urls).toHaveLength(1);
+    // Calendar + tavily ship empty in v0.1; v0.3 fills them when the planning
+    // rituals (calendar fetcher + /research) come back online.
+    expect(cfg.calendar.urls).toHaveLength(0);
     expect(cfg.calendar.pollIntervalMinutes).toBe(5);
-    expect(cfg.search.tavilyApiKey).toBe('tv-test');
+    expect(cfg.search.tavilyApiKey).toBe('');
     expect(cfg.indexing.embeddingModel).toBe('Xenova/all-MiniLM-L6-v2');
     expect(cfg.ui.theme).toBe('auto');
   });
