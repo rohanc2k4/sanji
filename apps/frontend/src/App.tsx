@@ -1,7 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { toast } from 'sonner';
 import { ChatShell } from './components/ChatShell';
 import { Toaster } from './components/ui/sonner';
 import { OnboardingFlow } from './onboarding/OnboardingFlow';
+import { AddSourceModal } from './components/AddSourceModal';
+import { IngestStatusPanel } from './components/IngestStatusPanel';
+import { applyIngestEvent, type StatusRow } from './components/ingestStatus';
+import { ingestFile, ingestText } from './api/ingest';
 import { getConfig } from './api/config';
 import { isApiError } from '@sanji/shared';
 
@@ -18,8 +23,6 @@ export default function App() {
       })
       .catch((err: unknown) => {
         if (cancelled) return;
-        // 404 = no config yet → onboarding. Other errors also fall through to
-        // onboarding for v0.1; refining "backend unreachable" UI is later polish.
         if (isApiError(err) && err.code === 'HTTP_404') setBoot('onboarding');
         else setBoot('onboarding');
       });
@@ -48,13 +51,71 @@ function Loading() {
 
 function ChatRoot() {
   const [editorPath, setEditorPath] = useState<string | null>(null);
+  const [rows, setRows] = useState<StatusRow[]>([]);
+  const [modalOpen, setModalOpen] = useState(false);
+  const ctrls = useRef<Map<string, AbortController>>(new Map());
+
+  async function startIngestFiles(files: File[]) {
+    for (const f of files) {
+      const ctrl = new AbortController();
+      try {
+        for await (const ev of ingestFile(f, ctrl.signal)) {
+          if (ev.kind === 'queued') ctrls.current.set(ev.fileId, ctrl);
+          setRows((prev) => applyIngestEvent(prev, ev));
+        }
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') continue;
+        const msg =
+          isApiError(err) ? err.message : err instanceof Error ? err.message : String(err);
+        toast.error(`Ingestion failed: ${f.name}`, { description: msg });
+      }
+    }
+  }
+
+  async function startIngestText(input: { title: string; content: string }) {
+    const ctrl = new AbortController();
+    try {
+      for await (const ev of ingestText(input, ctrl.signal)) {
+        if (ev.kind === 'queued') ctrls.current.set(ev.fileId, ctrl);
+        setRows((prev) => applyIngestEvent(prev, ev));
+      }
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(`Ingestion failed: ${input.title}`, { description: msg });
+    }
+  }
+
+  function dismissRow(fileId: string) {
+    setRows((prev) => prev.filter((r) => r.fileId !== fileId));
+    ctrls.current.delete(fileId);
+  }
+
+  function cancelRow(fileId: string) {
+    ctrls.current.get(fileId)?.abort();
+  }
+
   return (
-    <ChatShell
-      editorPath={editorPath}
-      onOpenEditor={setEditorPath}
-      onCloseEditor={() => setEditorPath(null)}
-      onFilesDropped={() => {}}
-      onAddSource={() => {}}
-    />
+    <>
+      <ChatShell
+        editorPath={editorPath}
+        onOpenEditor={setEditorPath}
+        onCloseEditor={() => setEditorPath(null)}
+        onFilesDropped={startIngestFiles}
+        onAddSource={() => setModalOpen(true)}
+      />
+      <IngestStatusPanel
+        rows={rows}
+        onDismiss={dismissRow}
+        onCancel={cancelRow}
+        onOpenNote={setEditorPath}
+      />
+      <AddSourceModal
+        open={modalOpen}
+        onOpenChange={setModalOpen}
+        onUploadFiles={startIngestFiles}
+        onSubmitText={startIngestText}
+      />
+    </>
   );
 }

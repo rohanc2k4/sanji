@@ -39,7 +39,7 @@ export function IngestStatusPanel({
   if (rows.length === 0) return null;
 
   return (
-    <div className="pointer-events-none absolute top-3 right-4 z-20 w-80 space-y-1.5">
+    <div className="pointer-events-none fixed right-4 top-[60px] z-30 w-80 space-y-1.5">
       {rows.map((r) => {
         const isActive =
           r.phase !== 'done' && r.phase !== 'skipped' && r.phase !== 'error';
