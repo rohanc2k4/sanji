@@ -8,9 +8,10 @@ export interface ChatShellProps {
   editorPath: string | null;
   onOpenEditor: (path: string) => void;
   onCloseEditor: () => void;
+  onFilesDropped: (files: File[]) => void;
 }
 
-export function ChatShell({ editorPath, onOpenEditor, onCloseEditor }: ChatShellProps) {
+export function ChatShell({ editorPath, onOpenEditor, onCloseEditor, onFilesDropped }: ChatShellProps) {
   const editorOpen = editorPath !== null;
   const chat = useChat();
 
@@ -33,7 +34,7 @@ export function ChatShell({ editorPath, onOpenEditor, onCloseEditor }: ChatShell
         </aside>
 
         <main className="relative flex flex-1 flex-col bg-background">
-          <ChatPane turns={chat.turns} streaming={chat.streaming} />
+          <ChatPane turns={chat.turns} streaming={chat.streaming} onFilesDropped={onFilesDropped} />
           <Composer
             onSubmit={chat.send}
             onAbort={chat.abort}

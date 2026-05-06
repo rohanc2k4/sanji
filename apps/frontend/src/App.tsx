@@ -53,6 +53,7 @@ function ChatRoot() {
       editorPath={editorPath}
       onOpenEditor={setEditorPath}
       onCloseEditor={() => setEditorPath(null)}
+      onFilesDropped={() => {}}
     />
   );
 }
