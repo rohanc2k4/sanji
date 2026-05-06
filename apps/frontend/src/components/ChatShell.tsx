@@ -1,3 +1,6 @@
+import { useState } from 'react';
+import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { ChatPane } from './ChatPane';
 import { Composer } from './Composer';
 import { EditorPanel } from './EditorPanel';
@@ -27,11 +30,21 @@ export function ChatShell({
 }: ChatShellProps) {
   const editorOpen = editorPath !== null;
   const chat = useChat();
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   return (
     <div className="flex h-screen w-screen flex-col bg-background font-sans text-foreground">
-      <header className="flex h-12 shrink-0 items-center justify-between border-b border-border bg-background px-4 text-xs text-muted-foreground">
+      <header className="flex h-12 shrink-0 items-center justify-between border-b border-border bg-background px-2 pr-4 text-xs text-muted-foreground">
         <div className="flex items-center gap-2">
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            onClick={() => setSidebarCollapsed((c) => !c)}
+            aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {sidebarCollapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
+          </Button>
           <span className="font-mono text-foreground">sanji</span>
           <span className="text-muted-foreground/50">·</span>
           <span>localhost vault</span>
@@ -42,15 +55,17 @@ export function ChatShell({
       </header>
 
       <div className="relative flex flex-1 overflow-hidden">
-        <aside className="w-[220px] shrink-0 border-r border-border bg-sidebar">
-          <SourcesSidebar
-            selectedPath={editorPath}
-            onSelect={onOpenEditor}
-            onAddSource={onAddSource}
-            refreshKey={sidebarRefreshKey}
-            onRenamed={onNoteRenamed}
-          />
-        </aside>
+        {!sidebarCollapsed && (
+          <aside className="w-[220px] shrink-0 border-r border-border bg-sidebar">
+            <SourcesSidebar
+              selectedPath={editorPath}
+              onSelect={onOpenEditor}
+              onAddSource={onAddSource}
+              refreshKey={sidebarRefreshKey}
+              onRenamed={onNoteRenamed}
+            />
+          </aside>
+        )}
 
         <main className="relative flex flex-1 flex-col bg-background">
           <ChatPane turns={chat.turns} streaming={chat.streaming} onFilesDropped={onFilesDropped} />
