@@ -1,0 +1,41 @@
+version: 2
+
+# Weekly dependency PRs.
+# - npm: groups all minor + patch updates into one PR per week, leaves majors
+#   as separate PRs so they can be evaluated individually.
+# - github-actions: keep workflow actions current; major updates also
+#   separated.
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: America/New_York
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+    commit-message:
+      prefix: deps
+      include: scope
+    groups:
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: America/New_York
+    open-pull-requests-limit: 5
+    labels:
+      - ci
+      - dependencies
+    commit-message:
+      prefix: ci
+      include: scope

@@ -1,0 +1,23 @@
+name: PR Title — Conventional Commits
+
+# When a PR squash-merges, the resulting commit subject becomes the PR title.
+# This action fails the check unless the title matches one of the conventional
+# commit types below, so the merge log on main stays clean.
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+    branches: [main]
+
+jobs:
+  lint-pr-title:
+    name: lint pr title
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    steps:
+      - name: Validate PR title against conventional-commit types
+        uses: ytanikin/pr-conventional-commits@1.4.0
+        with:
+          task_types: '["build","chore","ci","deps","docs","feat","fix","perf","refactor","revert","style","test","scope"]'
+          add_label: 'false'
