@@ -181,7 +181,7 @@ export function SourcesSidebar({ selectedPath, onSelect }: SourcesSidebarProps) 
         </span>
       </div>
 
-      <ScrollArea className="flex-1">
+      <ScrollArea className="min-h-0 flex-1">
         {state.kind === 'loading' && (
           <div className="space-y-1.5 px-3 pb-3" role="status" aria-label="Loading notes">
             {Array.from({ length: 6 }).map((_, i) => (
