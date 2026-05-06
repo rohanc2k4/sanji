@@ -29,3 +29,8 @@ yarn-debug.log*
 # Sanji's own runtime data when running locally against a dev vault
 .sanji/
 /vault/
+
+# Playwright artifacts (snapshots, traces, attachments from failing runs)
+test-results/
+playwright-report/
+.playwright/
