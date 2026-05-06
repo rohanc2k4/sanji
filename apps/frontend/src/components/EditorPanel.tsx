@@ -27,6 +27,11 @@ export interface EditorPanelProps {
 export function EditorPanel({ path, onClose }: EditorPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
+  // dirtyRef and the dirty state are deliberately kept in sync. The Cmd-S
+  // keymap below captures `save` in a closure created when the EditorView
+  // is first constructed, so it always sees the original (false) `dirty`
+  // value. The ref gives that closure a live read of the current state
+  // without forcing the EditorView to be rebuilt on every dirty flip.
   const dirtyRef = useRef(false);
   const pathRef = useRef<string | null>(null);
   const [dirty, setDirty] = useState(false);

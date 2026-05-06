@@ -57,5 +57,13 @@ export function applyEvent(turns: Turn[], event: ChatEvent): Turn[] {
     case 'tool_use_input_delta':
     case 'message_stop':
       return turns;
+    default: {
+      // Exhaustiveness check: a new ChatEvent variant in @sanji/shared will
+      // make this line a compile-time error, forcing an explicit handling
+      // decision rather than a silent runtime fall-through.
+      const _exhaustive: never = event;
+      void _exhaustive;
+      return turns;
+    }
   }
 }

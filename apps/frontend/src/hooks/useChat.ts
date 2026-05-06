@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
+import { toast } from 'sonner';
 import { chatStream } from '@/api/chat';
 import {
   applyEvent,
@@ -19,7 +20,15 @@ export function useChat(): UseChatResult {
   const ctrlRef = useRef<AbortController | null>(null);
 
   const send = useCallback((message: string, model?: string) => {
-    if (ctrlRef.current) return;
+    if (ctrlRef.current) {
+      // Common UX pattern: user typing the next message while the current
+      // response is still streaming. Surface a brief toast so the no-op
+      // doesn't feel like the input was swallowed silently.
+      toast.info('Wait for the current response', {
+        description: 'Or click Stop to cancel and send a new message.',
+      });
+      return;
+    }
     setTurns((prev) => [
       ...prev,
       { role: 'user', content: message },

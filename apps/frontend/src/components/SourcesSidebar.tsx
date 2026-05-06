@@ -131,6 +131,7 @@ type LoadState =
 export function SourcesSidebar({ selectedPath, onSelect }: SourcesSidebarProps) {
   const [state, setState] = useState<LoadState>({ kind: 'loading' });
   const [reloadKey, setReloadKey] = useState(0);
+  const [autoRetried, setAutoRetried] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -157,6 +158,20 @@ export function SourcesSidebar({ selectedPath, onSelect }: SourcesSidebarProps) 
   }, [reloadKey]);
 
   const isReadyEmpty = state.kind === 'ready' && state.tree.length === 0;
+
+  // First-mount-after-onboarding race: ChatShell typically mounts a beat
+  // before the indexer finishes inserting the initial batch of notes, so
+  // the first listNotes() call returns []. Retry once after a short delay
+  // before falling back to the empty state, so the user doesn't have to
+  // hit Retry manually on a fresh setup.
+  useEffect(() => {
+    if (!isReadyEmpty || autoRetried) return;
+    const timer = setTimeout(() => {
+      setAutoRetried(true);
+      setReloadKey((k) => k + 1);
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [isReadyEmpty, autoRetried]);
 
   return (
     <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
@@ -215,7 +230,7 @@ export function SourcesSidebar({ selectedPath, onSelect }: SourcesSidebarProps) 
           variant="ghost"
           size="sm"
           className="w-full justify-start text-muted-foreground hover:text-foreground"
-          onClick={() => onSelect('untitled.md')}
+          onClick={() => onSelect(`inbox/untitled-${Date.now()}.md`)}
         >
           <Plus />
           <span>New note</span>

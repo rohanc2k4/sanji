@@ -33,7 +33,8 @@ export function notesRoute(deps: { paths: VaultPaths }) {
   r.put('/api/notes/*', async (c) => {
     const raw = c.req.path.replace(/^\/api\/notes\//, '');
     const decoded = decodeURIComponent(raw);
-    try { validateVaultRelativePath(decoded); }
+    let validated: string;
+    try { validated = validateVaultRelativePath(decoded); }
     catch (err) { return c.json({ kind: 'api-error', code: 'BAD_PATH', message: (err as Error).message }, 400); }
     const body = await c.req.json().catch(() => null) as { content?: unknown } | null;
     if (!body || typeof body.content !== 'string') {
@@ -43,7 +44,7 @@ export function notesRoute(deps: { paths: VaultPaths }) {
     // fields (db, repo, embedder) are unused here, so a partial cast is safe.
     const ctx = { paths: deps.paths } as unknown as ToolContext;
     try {
-      const result = await writeNoteTool.run({ path: decoded, content: body.content }, ctx);
+      const result = await writeNoteTool.run({ path: validated, content: body.content }, ctx);
       return c.json(JSON.parse(result));
     } catch (err) {
       return c.json({ kind: 'api-error', code: 'WRITE_FAILED', message: (err as Error).message }, 400);
