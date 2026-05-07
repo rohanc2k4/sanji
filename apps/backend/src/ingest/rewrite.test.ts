@@ -51,4 +51,30 @@ body
       'summary',
     ]);
   });
+
+  it('strips a leading prose preamble before the first --- delimiter', () => {
+    const wrapped = `Here is the structured note for the source:\n\n${VALID}`;
+    const r = parseRewriteOutput(wrapped);
+    expect(r.frontmatter.title).toBe('Attention is all you need');
+    expect(r.body).toContain('Body paragraph here.');
+  });
+
+  it('strips a markdown code fence wrapping the entire output', () => {
+    const wrapped = '```markdown\n' + VALID.trimEnd() + '\n```';
+    const r = parseRewriteOutput(wrapped);
+    expect(r.frontmatter.content_type).toBe('paper');
+  });
+
+  it('strips a bare ``` code fence wrapping the entire output', () => {
+    const wrapped = '```\n' + VALID.trimEnd() + '\n```';
+    const r = parseRewriteOutput(wrapped);
+    expect(r.frontmatter.content_type).toBe('paper');
+  });
+
+  it('strips both a code fence and leading prose', () => {
+    const wrapped =
+      'Here you go:\n\n```markdown\n' + VALID.trimEnd() + '\n```';
+    const r = parseRewriteOutput(wrapped);
+    expect(r.frontmatter.title).toBe('Attention is all you need');
+  });
 });

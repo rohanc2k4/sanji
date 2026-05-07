@@ -213,6 +213,15 @@ export class IngestService {
       );
     } catch (err) {
       const cancelled = job.abortController.signal.aborted;
+      // Surface the raw model output to backend stderr when the parser
+      // rejected it, so we can inspect what the LLM actually produced.
+      const rawOutput = (err as Error & { rawOutput?: string }).rawOutput;
+      if (!cancelled && typeof rawOutput === 'string') {
+        process.stderr.write(
+          `ingest rewrite parse failure for ${name}, raw model output:\n` +
+            `<<<\n${rawOutput}\n>>>\n`,
+        );
+      }
       yield {
         kind: 'error', fileId: job.fileId, sourceName: name,
         phase: 'rewrite',

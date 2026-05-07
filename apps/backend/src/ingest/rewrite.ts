@@ -51,8 +51,36 @@ export interface ParsedRewrite {
   body: string;
 }
 
+/**
+ * Strip three kinds of LLM output noise that wrap an otherwise-valid note:
+ *   1. Leading prose before the first `---` delimiter line ("Here is the
+ *      structured note:\n\n---\n...").
+ *   2. A whole-document code fence wrapper (```markdown ... ``` or ``` ... ```).
+ *   3. Trailing prose after the body that's outside any obvious structure.
+ *
+ * Returns the raw string trimmed to start at the first `---` delimiter line
+ * (if any) so the existing regex parser succeeds. If no delimiter line is
+ * found, returns the original string and the parser will throw with the
+ * meaningful "missing YAML frontmatter delimiters" error.
+ */
+function stripWrappers(raw: string): string {
+  let s = raw.trim();
+  // Code-fence wrapper: ```markdown\n...\n``` or just ```\n...\n```.
+  const fence = s.match(/^```(?:\w+)?\s*\n([\s\S]*?)\n```\s*$/);
+  if (fence) s = fence[1]!.trim();
+  // Leading prose: skip lines until we hit `^---\s*$` (a delimiter line by itself).
+  const lines = s.split('\n');
+  const firstDelim = lines.findIndex((line) => /^---\s*$/.test(line));
+  if (firstDelim > 0) s = lines.slice(firstDelim).join('\n');
+  return s;
+}
+
 export function parseRewriteOutput(raw: string): ParsedRewrite {
-  const m = raw.match(/^---\s*\n([\s\S]*?)\n---\s*\n?([\s\S]*)$/);
+  // Haiku (and even Sonnet on a bad day) sometimes wraps the note in a
+  // code fence or prefixes it with explanatory prose like "Here is the
+  // structured note:". Tolerate both before insisting on the delimiter.
+  const stripped = stripWrappers(raw);
+  const m = stripped.match(/^---\s*\n([\s\S]*?)\n---\s*\n?([\s\S]*)$/);
   if (!m) {
     throw new Error('rewrite output missing YAML frontmatter delimiters');
   }
@@ -136,7 +164,8 @@ function buildPrompt(input: RewriteInput): string {
   ].join('\n');
 }
 
-const STRICT_RETRY_REMINDER = `Your previous response was not parseable. Output exactly:
+const STRICT_RETRY_REMINDER = `Your previous response could not be parsed. Reply with the note ONLY. The first three characters of your reply MUST be \`---\\n\`. Do NOT wrap the response in code fences. Do NOT prefix with "Here is" or any other prose. Concrete shape:
+
 ---
 title: <string>
 source: <string>
@@ -146,9 +175,13 @@ summary: <single line, max 200 chars>
 tags: [optional]
 ---
 
-<body markdown>
+<one-paragraph summary>
 
-Do not include any text before the opening --- or after the body.`;
+## <Section>
+
+<body content>
+
+End with the body. Do not add commentary after.`;
 
 /**
  * Run the bundled ingest skill against the extracted text + vault context.

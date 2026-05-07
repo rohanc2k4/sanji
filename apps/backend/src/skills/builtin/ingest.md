@@ -117,3 +117,41 @@ topics already in the vault, pick the 8 strongest.
   figures).
 - Topics from the source that have no obvious vault context match
   (potential new pages).
+
+## Output template (copy this shape exactly)
+
+Your reply must start with `---` on its own line, with no preamble. Do
+not wrap the response in code fences. Do not say "here is the note" or
+add commentary before or after. The first three characters of your
+response must be `---\n`. Concrete shape:
+
+---
+title: Attention Is All You Need
+source: paste
+ingested_on: 2026-05-06
+content_type: paper
+summary: Introduces the Transformer architecture, replacing recurrence with attention.
+tags: [transformers, attention, neural-architectures]
+---
+
+The Transformer architecture proposed here ditches recurrence entirely
+and relies only on self-attention to model dependencies, both within an
+input sequence and between input and output sequences. [Source: attention.pdf]
+
+## Background
+
+Sequence modeling work prior to this paper relied on RNNs and CNNs, both
+of which struggle with long-range dependencies and parallelism. [Source: attention.pdf]
+
+## Key findings
+
+Multi-head self-attention captures different representation subspaces in
+parallel, then concatenates them. [Source: attention.pdf]
+
+## Connections
+
+[[transformers]]
+
+## Source citations
+
+Vaswani et al., 2017. [Source: attention.pdf]
