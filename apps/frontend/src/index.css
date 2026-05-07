@@ -165,3 +165,25 @@
   to   { opacity: 1; }
 }
 .animate-editor-fade-in { animation: editor-fade-in 200ms ease-out; }
+
+/* Word-level fade-in for streamed assistant replies — modeled on Gemini's
+   web chat (per LibreChat thread + Aceternity blur-fade-in clone): each
+   word starts blurred + invisible and resolves to clear over ~400ms. The
+   word-reveal cadence is controlled in JS (useGeminiReveal hook in
+   ChatMessage); this keyframe just handles the per-word visual. New words
+   trigger the animation automatically because React keys them by token
+   index — already-mounted word spans persist and don't re-animate. */
+@keyframes word-fade-in {
+  from {
+    opacity: 0;
+    filter: blur(6px);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+.animate-word-fade-in {
+  animation: word-fade-in 400ms ease-out;
+  display: inline-block;
+}

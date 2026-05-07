@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { Turn } from './applyEvent';
 
 export interface ChatMessageProps {
@@ -6,31 +6,43 @@ export interface ChatMessageProps {
   streaming?: boolean;
 }
 
-// The typewriter animation drains buffered SSE text into the visible string
-// at a rate scaled by how much is still unrendered: longer outputs catch up
-// faster so a 5000-char reply doesn't crawl while a 50-char reply doesn't
-// blur. The `TARGET_DRAIN_MS` knob is "how long should it take to render
-// what's currently buffered, assuming no new deltas arrive" — clamped on
-// both ends so the animation always feels alive but never sluggish.
-const TARGET_DRAIN_MS = 500;
-const MIN_CPS = 50;
-const MAX_CPS = 5000;
+// Gemini-style word reveal: rather than appending characters as SSE chunks
+// arrive (which looks lumpy because chunks vary in size), buffer the text
+// and reveal it word-by-word at a controlled cadence. Each newly-mounted
+// word span gets a CSS blur+fade-in animation. The reveal rate (in words
+// per second) scales with how many words are still unrevealed so longer
+// outputs catch up faster — short replies feel deliberate, long replies
+// flow rapidly.
+//
+// Gating notes (from researching Gemini clones / LibreChat thread):
+//   - Word-level, not char-level. Char streaming reads as glitchy at any
+//     reasonable rate; word reveal feels human.
+//   - Each word has its OWN ~400ms blur fade-in. The reveal cadence
+//     determines how often a new word starts animating; the animations
+//     overlap, producing a continuous ripple.
+//   - Keys must be stable so React doesn't re-animate already-revealed
+//     words on every re-render. We key by token index in the split array.
 
-function useTypewriter(fullText: string, streaming: boolean): string {
-  const [visible, setVisible] = useState('');
+const STREAMING_MIN_WPS = 10;
+const STREAMING_MAX_WPS = 40;
+const STREAMING_DRAIN_MS = 600;
+const POST_STREAM_MIN_WPS = 60;
+
+function countWords(s: string): number {
+  // Whitespace-delimited tokens, ignoring empty tokens between consecutive
+  // whitespace runs. Same definition that the render-side tokenizer uses.
+  return s.trim().length === 0 ? 0 : s.trim().split(/\s+/).length;
+}
+
+function useGeminiReveal(fullText: string, streaming: boolean): number {
+  const [revealed, setRevealed] = useState(0);
   const fullRef = useRef(fullText);
   fullRef.current = fullText;
-  const visibleLenRef = useRef(0);
+  const revealedRef = useRef(0);
+  const streamingRef = useRef(streaming);
+  streamingRef.current = streaming;
 
   useEffect(() => {
-    if (!streaming) {
-      // Snap to full text the moment streaming ends so the user never sees
-      // a half-typed reply persist after the assistant is done.
-      visibleLenRef.current = fullRef.current.length;
-      setVisible(fullRef.current);
-      return;
-    }
-
     let raf = 0;
     let last = performance.now();
 
@@ -38,23 +50,55 @@ function useTypewriter(fullText: string, streaming: boolean): string {
       const dt = now - last;
       last = now;
 
-      const full = fullRef.current;
-      const remaining = full.length - visibleLenRef.current;
+      const total = countWords(fullRef.current);
+      const remaining = total - revealedRef.current;
+
       if (remaining > 0) {
-        const cps = Math.max(MIN_CPS, Math.min(MAX_CPS, (remaining * 1000) / TARGET_DRAIN_MS));
-        const advance = Math.max(1, Math.round((cps * dt) / 1000));
-        visibleLenRef.current = Math.min(full.length, visibleLenRef.current + advance);
-        setVisible(full.slice(0, visibleLenRef.current));
+        // While streaming, keep ~600ms ahead of the buffer (catch up to
+        // remaining within ~600ms, clamped). Once streaming ends, drain
+        // any leftover at a faster rate so a half-revealed reply doesn't
+        // linger after the assistant's done.
+        const wps = streamingRef.current
+          ? Math.max(STREAMING_MIN_WPS, Math.min(STREAMING_MAX_WPS, (remaining * 1000) / STREAMING_DRAIN_MS))
+          : Math.max(POST_STREAM_MIN_WPS, remaining * 4);
+        const advance = Math.max(1, Math.round((wps * dt) / 1000));
+        revealedRef.current = Math.min(total, revealedRef.current + advance);
+        setRevealed(revealedRef.current);
       }
 
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
-
     return () => cancelAnimationFrame(raf);
-  }, [streaming]);
+  }, []);
 
-  return visible;
+  return revealed;
+}
+
+function renderRevealed(fullText: string, revealedWordCount: number): ReactNode[] {
+  // Split keeping whitespace runs as separate tokens so we preserve the
+  // original spacing (newlines, multiple spaces in code blocks, etc.).
+  const tokens = fullText.split(/(\s+)/);
+  const output: ReactNode[] = [];
+  let wordIndex = 0;
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i]!;
+    const isWhitespace = /^\s+$/.test(token);
+    if (token.length === 0) continue;
+    if (isWhitespace) {
+      // Whitespace is rendered only when the preceding word has been revealed.
+      if (wordIndex > 0 && wordIndex <= revealedWordCount) output.push(token);
+      continue;
+    }
+    if (wordIndex >= revealedWordCount) break;
+    output.push(
+      <span key={i} className="animate-word-fade-in">
+        {token}
+      </span>,
+    );
+    wordIndex++;
+  }
+  return output;
 }
 
 export function ChatMessage({ turn, streaming }: ChatMessageProps) {
@@ -69,19 +113,24 @@ export function ChatMessage({ turn, streaming }: ChatMessageProps) {
   }
 
   const fullText = turn.deltas.join('');
-  const text = useTypewriter(fullText, streaming === true);
+  const revealedCount = useGeminiReveal(fullText, streaming === true);
+  const visibleNodes = renderRevealed(fullText, revealedCount);
+  const totalWords = countWords(fullText);
+  const stillRevealing = revealedCount < totalWords;
 
   return (
     <div className="flex flex-col gap-2">
       <div className="max-w-[68ch] whitespace-pre-wrap rounded-md border border-border bg-card px-3 py-2 text-sm leading-relaxed text-foreground">
-        {text || (
+        {visibleNodes.length === 0 ? (
           <span className="inline-flex items-center gap-1 text-muted-foreground/60">
             <span className="size-1.5 animate-pulse rounded-full bg-muted-foreground/50" />
             <span className="size-1.5 animate-pulse rounded-full bg-muted-foreground/50 [animation-delay:120ms]" />
             <span className="size-1.5 animate-pulse rounded-full bg-muted-foreground/50 [animation-delay:240ms]" />
           </span>
+        ) : (
+          visibleNodes
         )}
-        {streaming && text && (
+        {streaming && stillRevealing && (
           <span className="ml-0.5 inline-block h-3.5 w-[2px] translate-y-[2px] animate-pulse bg-primary/70" />
         )}
       </div>
