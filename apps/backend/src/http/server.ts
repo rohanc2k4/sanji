@@ -8,6 +8,7 @@ import { chatRoute } from './routes/chat.js';
 import { indexingRoute } from './routes/indexing.js';
 import { ingestRoute } from './routes/ingest.js';
 import { Indexer } from '../index/indexer.js';
+import { makeBlurbLlm } from '../retrieval/contextual-blurb-deps.js';
 import type { ServerDeps } from './deps.js';
 import { teardownReadyDeps, type ReadyDeps } from './bootstrap.js';
 
@@ -52,6 +53,7 @@ function buildRoutes(
       const ix = new Indexer(deps.db, deps.embedder, {
         chunkSizeTokens: deps.cfg.indexing.chunkSizeTokens,
         chunkOverlapTokens: deps.cfg.indexing.chunkOverlapTokens,
+        blurbLlm: makeBlurbLlm(deps.adapter),
       });
       await ix.indexAll(deps.paths.vault, { onProgress: cb });
     };

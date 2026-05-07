@@ -5,11 +5,22 @@ import type { Db } from '../db/client.js';
 import type { Embedder } from '../embeddings/embedder.js';
 import { chunkBody, formatChunkForEmbedding } from '../vault/chunk.js';
 import { parseNote } from '../vault/parse.js';
+import { generateContextBlurb, type BlurbDeps } from '../retrieval/contextual-blurb.js';
 import { IndexRepo } from './repo.js';
 
 export interface IndexerOptions {
   chunkSizeTokens: number;
   chunkOverlapTokens: number;
+  /**
+   * Optional contextual-blurb LLM (R1 Anthropic contextual retrieval). When
+   * omitted, chunks persist with `context_text = null` and embeddings are
+   * computed from title+trail+body only — i.e. contextual retrieval is off.
+   * The HTTP bootstrap path wires Haiku 4.5 in; the eval harness leaves it
+   * out so retrieval-only changes can be measured cheaply.
+   */
+  blurbLlm?: BlurbDeps['llm'];
+  /** Max concurrent blurb generations per note. Default 5. */
+  blurbConcurrency?: number;
 }
 
 export interface IndexStats {
@@ -74,15 +85,61 @@ export class Indexer {
       sizeTokens: this.opts.chunkSizeTokens,
       overlapTokens: this.opts.chunkOverlapTokens,
     });
+
+    // Generate contextual blurbs in parallel with a concurrency cap. When no
+    // blurbLlm is wired in, we skip the call entirely and persist null.
+    const blurbLlm = this.opts.blurbLlm;
+    const concurrency = Math.max(1, this.opts.blurbConcurrency ?? 5);
+    const blurbs: Array<string | null> = new Array(bodyChunks.length).fill(null);
+    if (blurbLlm) {
+      let cursor = 0;
+      const docTitle = note.title ?? relPath;
+      const worker = async () => {
+        while (true) {
+          const idx = cursor++;
+          if (idx >= bodyChunks.length) return;
+          const c = bodyChunks[idx]!;
+          try {
+            const blurb = await generateContextBlurb(
+              {
+                docTitle,
+                docBody: note.body,
+                chunkText: c.text,
+                headerTrail: c.headerTrail,
+              },
+              { llm: blurbLlm },
+            );
+            blurbs[idx] = blurb || null;
+          } catch (err) {
+            // Don't fail the whole index on a blurb error; degrade to null.
+            process.stderr.write(
+              `blurb generation failed for ${relPath}#${idx}: ${
+                err instanceof Error ? err.message : String(err)
+              }\n`,
+            );
+            blurbs[idx] = null;
+          }
+        }
+      };
+      const workers = Array.from({ length: Math.min(concurrency, bodyChunks.length) }, worker);
+      await Promise.all(workers);
+    }
+
     const upserts = await Promise.all(
-      bodyChunks.map(async (c, idx) => ({
-        chunkIndex: idx,
-        text: c.text,
-        startChar: c.startChar,
-        endChar: c.endChar,
-        headerTrail: c.headerTrail,
-        embedding: await this.embedder.embed(formatChunkForEmbedding(c, { title: note.title })),
-      })),
+      bodyChunks.map(async (c, idx) => {
+        const contextText = blurbs[idx];
+        return {
+          chunkIndex: idx,
+          text: c.text,
+          startChar: c.startChar,
+          endChar: c.endChar,
+          headerTrail: c.headerTrail,
+          contextText,
+          embedding: await this.embedder.embed(
+            formatChunkForEmbedding(c, { title: note.title }, { contextText }),
+          ),
+        };
+      }),
     );
     this.repo.replaceChunksForNote(relPath, upserts);
     return { chunksIndexed: upserts.length, skipped: false };

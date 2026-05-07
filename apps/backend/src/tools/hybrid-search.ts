@@ -11,6 +11,7 @@ interface FusedHit {
   chunkIndex: number;
   text: string;
   headerTrail: string[];
+  contextText: string | null;
   fusedScore: number;
 }
 
@@ -102,6 +103,7 @@ export const hybridSearchTool: Tool = {
           chunkIndex: dh.chunkIndex,
           text: dh.text,
           headerTrail: dh.headerTrail ?? [],
+          contextText: dh.contextText ?? null,
           fusedScore: score,
         };
       }
@@ -111,6 +113,7 @@ export const hybridSearchTool: Tool = {
         chunkIndex: fc?.chunkIndex ?? 0,
         text: fc?.text ?? '',
         headerTrail: fc?.headerTrail ?? [],
+        contextText: fc?.contextText ?? null,
         fusedScore: score,
       };
     });

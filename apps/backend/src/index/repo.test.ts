@@ -108,6 +108,28 @@ describe('IndexRepo — chunks', () => {
     expect(hits[0]?.text).toBe('alpha');
   });
 
+  it('round-trips context_text through replace + knnChunks + firstChunk', async () => {
+    const { repo, embedder } = setup();
+    repo.upsertNote({ path: 'a.md', mtimeMs: 1, body: 'b', frontmatter: null, title: null });
+    const v1 = await embedder.embed('alpha');
+    repo.replaceChunksForNote('a.md', [
+      {
+        chunkIndex: 0,
+        text: 'alpha',
+        startChar: 0,
+        endChar: 5,
+        embedding: v1,
+        headerTrail: ['H'],
+        contextText: 'A blurb describing alpha.',
+      },
+    ]);
+    const target = await embedder.embed('alpha');
+    const hits = repo.knnChunks(target, 1);
+    expect(hits[0]?.contextText).toBe('A blurb describing alpha.');
+    const fc = repo.firstChunk('a.md');
+    expect(fc?.contextText).toBe('A blurb describing alpha.');
+  });
+
   it('round-trips header_trail through replace + knnChunks', async () => {
     const { repo, embedder } = setup();
     repo.upsertNote({ path: 'a.md', mtimeMs: 1, body: 'b', frontmatter: null, title: null });

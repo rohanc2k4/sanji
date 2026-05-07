@@ -1,6 +1,13 @@
 import { z } from 'zod';
 import { query, tool, createSdkMcpServer } from '@anthropic-ai/claude-agent-sdk';
-import type { ChatEvent, ChatOpts, ChatTool, ModelInfo, ProviderAdapter } from '@sanji/shared';
+import type {
+  ChatEvent,
+  ChatOpts,
+  ChatTool,
+  ModelInfo,
+  OneShotOpts,
+  ProviderAdapter,
+} from '@sanji/shared';
 
 const KNOWN_MODELS: ModelInfo[] = [
   { id: 'claude-opus-4-7', displayName: 'Claude Opus 4.7 (subscription)' },
@@ -77,6 +84,34 @@ export class ClaudeCodeSDKAdapter implements ProviderAdapter {
 
   async getAvailableModels(): Promise<ModelInfo[]> {
     return KNOWN_MODELS;
+  }
+
+  /**
+   * NOTE: the Claude Code SDK does not currently expose cache_control on
+   * prompt content blocks; the `cache` flag on segments is ignored on this
+   * path. Anthropic API path keeps caching. The blurb call still works, just
+   * at a higher per-call cost on subscription auth.
+   */
+  async oneShot(opts: OneShotOpts): Promise<string> {
+    const prompt = opts.segments.map((s) => s.text).join('\n\n');
+    const stream = query({
+      prompt,
+      options: {
+        model: opts.model,
+        ...(opts.system ? { systemPrompt: opts.system } : {}),
+      },
+    });
+    let out = '';
+    for await (const msg of stream as AsyncIterable<any>) {
+      if (msg.type === 'assistant' && Array.isArray(msg.message?.content)) {
+        for (const block of msg.message.content) {
+          if (block.type === 'text') out += block.text as string;
+        }
+      } else if (msg.type === 'result') {
+        break;
+      }
+    }
+    return out;
   }
 
   async testCredentials(): Promise<{ ok: boolean; reason?: string }> {

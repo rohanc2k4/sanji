@@ -86,6 +86,27 @@ describe('formatChunkForEmbedding', () => {
     expect(formatted).toContain('body');
   });
 
+  it('inserts contextText between the header trail and the chunk body when provided', () => {
+    const formatted = formatChunkForEmbedding(
+      { text: 'body', headerTrail: ['Top'], chunkIndex: 0, startChar: 0, endChar: 4 } as any,
+      { title: 'Doc' } as any,
+      { contextText: 'A blurb describing the chunk.' },
+    );
+    expect(formatted).toContain('# Doc');
+    expect(formatted).toContain('## Top');
+    expect(formatted).toContain('A blurb describing the chunk.');
+    expect(formatted.indexOf('A blurb')).toBeLessThan(formatted.indexOf('body'));
+  });
+
+  it('omits contextText cleanly when not provided', () => {
+    const formatted = formatChunkForEmbedding(
+      { text: 'body', headerTrail: [], chunkIndex: 0, startChar: 0, endChar: 4 } as any,
+      { title: 'Doc' } as any,
+    );
+    expect(formatted).not.toContain('blurb');
+    expect(formatted).toContain('body');
+  });
+
   it('handles missing doc title gracefully', () => {
     const formatted = formatChunkForEmbedding(
       { text: 'body', headerTrail: [], chunkIndex: 0, startChar: 0, endChar: 4 } as any,

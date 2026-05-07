@@ -43,8 +43,38 @@ export interface ModelInfo {
   displayName: string;
 }
 
+/**
+ * A single cached text segment passed to a one-shot request. When `cache` is
+ * true the adapter renders this as a content block with
+ * `cache_control: { type: 'ephemeral' }` (Anthropic API only — the Claude
+ * Code SDK does not currently expose cache_control, so the flag is ignored
+ * there).
+ */
+export interface OneShotSegment {
+  text: string;
+  cache?: boolean;
+}
+
+export interface OneShotOpts {
+  model: string;
+  system?: string;
+  /**
+   * Ordered cached/uncached text segments rendered as the user message.
+   * The adapter concatenates them into the request; cached segments are
+   * emitted as separate text blocks with cache_control where supported.
+   */
+  segments: OneShotSegment[];
+  maxTokens?: number;
+}
+
 export interface ProviderAdapter {
   chat(opts: ChatOpts): AsyncIterable<ChatEvent>;
   getAvailableModels(): Promise<ModelInfo[]>;
   testCredentials(): Promise<{ ok: boolean; reason?: string }>;
+  /**
+   * Non-streaming single-turn call. Returns the assistant's first text block.
+   * Used for utility calls (e.g. context-blurb generation) where streaming
+   * has no value. Optional so that fake/offline adapters can opt out.
+   */
+  oneShot?(opts: OneShotOpts): Promise<string>;
 }

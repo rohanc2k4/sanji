@@ -1,5 +1,11 @@
 import Anthropic from '@anthropic-ai/sdk';
-import type { ChatEvent, ChatOpts, ModelInfo, ProviderAdapter } from '@sanji/shared';
+import type {
+  ChatEvent,
+  ChatOpts,
+  ModelInfo,
+  OneShotOpts,
+  ProviderAdapter,
+} from '@sanji/shared';
 
 const KNOWN_MODELS: ModelInfo[] = [
   { id: 'claude-opus-4-7', displayName: 'Claude Opus 4.7' },
@@ -37,6 +43,27 @@ export class AnthropicApiAdapter implements ProviderAdapter {
 
   async getAvailableModels(): Promise<ModelInfo[]> {
     return KNOWN_MODELS;
+  }
+
+  async oneShot(opts: OneShotOpts): Promise<string> {
+    const content = opts.segments.map((s) => {
+      const block: { type: 'text'; text: string; cache_control?: { type: 'ephemeral' } } = {
+        type: 'text',
+        text: s.text,
+      };
+      if (s.cache) block.cache_control = { type: 'ephemeral' };
+      return block;
+    });
+    const resp = await this.client.messages.create({
+      model: opts.model,
+      max_tokens: opts.maxTokens ?? 256,
+      ...(opts.system ? { system: opts.system } : {}),
+      messages: [{ role: 'user', content: content as unknown as Anthropic.TextBlockParam[] }],
+    } as Anthropic.MessageCreateParamsNonStreaming);
+    const first = resp.content.find((b: Anthropic.ContentBlock) => b.type === 'text') as
+      | { type: 'text'; text: string }
+      | undefined;
+    return first?.text ?? '';
   }
 
   async testCredentials(): Promise<{ ok: boolean; reason?: string }> {

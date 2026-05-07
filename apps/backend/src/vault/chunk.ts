@@ -84,15 +84,21 @@ export function chunkBody(body: string, opts: ChunkOptions): BodyChunk[] {
 export function formatChunkForEmbedding(
   chunk: BodyChunk,
   doc: { title: string | null },
+  extras?: { contextText?: string | null },
 ): string {
   const trail = chunk.headerTrail ?? [];
   const hasTitle = doc.title != null && doc.title.length > 0;
-  if (!hasTitle && trail.length === 0) return chunk.text;
+  const contextText = extras?.contextText?.trim() ?? '';
+  if (!hasTitle && trail.length === 0 && !contextText) return chunk.text;
   const lines: string[] = [];
   if (hasTitle) lines.push(`# ${doc.title}`);
   for (let i = 0; i < trail.length; i++) {
     const level = (hasTitle ? 2 : 1) + i;
     lines.push(`${'#'.repeat(level)} ${trail[i]}`);
+  }
+  if (contextText) {
+    lines.push('');
+    lines.push(contextText);
   }
   lines.push('');
   lines.push(chunk.text);
