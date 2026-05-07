@@ -153,3 +153,15 @@
   100% { transform: translateX(300%); }
 }
 .animate-progress-indeterminate { animation: progress-indeterminate 1.4s ease-in-out infinite; }
+
+/* Fade-in for the editor container when switching from one note to
+   another. The aside pane's translateX slide only fires on first open;
+   switching notes keeps the aside in place but rebuilds the inner
+   CodeMirror view, which without this snaps abruptly. Keyed off `path`
+   so React unmount + remount triggers the keyframe on every note change.
+   200ms matches the aside-pane slide cadence. */
+@keyframes editor-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.animate-editor-fade-in { animation: editor-fade-in 200ms ease-out; }

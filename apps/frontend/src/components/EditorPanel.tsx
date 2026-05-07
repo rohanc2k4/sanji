@@ -194,7 +194,11 @@ export function EditorPanel({ path, onClose, onSaved }: EditorPanelProps) {
           </Button>
         </div>
       </div>
-      <div ref={containerRef} className="flex-1 overflow-auto" />
+      <div
+        ref={containerRef}
+        key={path}
+        className="flex-1 overflow-auto animate-editor-fade-in"
+      />
 
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <AlertDialogContent>
