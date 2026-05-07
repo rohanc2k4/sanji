@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { resolveVaultPaths } from '../config/paths.js';
@@ -137,11 +137,34 @@ describe('IngestService', () => {
     }
     // Ingestion succeeds end-to-end (the offline scripted adapter returns a valid note).
     expect(events.at(-1)).toMatchObject({ kind: 'done' });
-    // The original is parked at the safe sanitized path...
-    const safeOriginal = join(paths.vault, '.sanji/originals/escape.md');
-    expect(existsSync(safeOriginal)).toBe(true);
-    // ...and definitely not above the vault root.
+    // The original is parked under .sanji/originals/ with a timestamped basename
+    // (collision-resistant), and definitely not above the vault root.
+    const originalsDir = join(paths.vault, '.sanji/originals');
+    const archived = readdirSync(originalsDir);
+    expect(archived).toHaveLength(1);
+    expect(archived[0]).toMatch(/^escape-\d+\.md$/);
     expect(existsSync(join(paths.vault, '../../../escape.md'))).toBe(false);
+    db.close();
+  });
+
+  it('writes originals with collision-resistant names so a second ingestion does not overwrite the first', async () => {
+    const { service, paths, db } = setup();
+    // First ingestion of paper.pdf
+    for await (const _ of service.enqueue({
+      fileId: 'f-a',
+      source: { kind: 'file', data: Buffer.from('first contents'), filename: 'paper.pdf' },
+      abortController: new AbortController(),
+    })) { /* drain */ }
+    // Wait 2ms to ensure Date.now() differs across the two writes.
+    await new Promise((r) => setTimeout(r, 2));
+    // Second ingestion of paper.pdf with different content
+    for await (const _ of service.enqueue({
+      fileId: 'f-b',
+      source: { kind: 'file', data: Buffer.from('second contents'), filename: 'paper.pdf' },
+      abortController: new AbortController(),
+    })) { /* drain */ }
+    const archived = readdirSync(join(paths.vault, '.sanji/originals')).filter((f) => f.startsWith('paper-'));
+    expect(archived).toHaveLength(2);
     db.close();
   });
 

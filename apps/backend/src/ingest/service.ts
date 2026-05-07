@@ -72,14 +72,25 @@ function originalRelPath(source: IngestJob['source']): string | null {
   if (source.kind === 'file') {
     const safe = basename(source.filename);
     if (!safe || safe === '.' || safe === '..') return null;
-    const rel = `.sanji/originals/${safe}`;
+    // Append a timestamp suffix so two ingestions of the same filename do not
+    // overwrite each other in the originals archive. Combined with the
+    // exclusive-create write flag at the call site, this is collision-resistant.
+    const stem = basename(safe, extname(safe));
+    const ext = extname(safe);
+    const stamped = `${stem}-${Date.now()}${ext}`;
+    const rel = `.sanji/originals/${stamped}`;
     try {
       return validateVaultRelativePath(rel);
     } catch {
       return null;
     }
   }
-  return `.sanji/originals/${kebab(source.title)}-${Date.now()}.txt`;
+  const rel = `.sanji/originals/${kebab(source.title)}-${Date.now()}.txt`;
+  try {
+    return validateVaultRelativePath(rel);
+  } catch {
+    return null;
+  }
 }
 
 function serializeFrontmatter(fm: Record<string, unknown>): string {
@@ -187,7 +198,7 @@ export class IngestService {
         }
         const origAbs = join(this.deps.paths.vault, origRel);
         await mkdir(join(this.deps.paths.vault, '.sanji/originals'), { recursive: true });
-        await writeFile(origAbs, job.source.content, 'utf-8');
+        await writeFile(origAbs, job.source.content, { encoding: 'utf-8', flag: 'wx' });
         originalForFrontmatter = origRel;
       } else {
         format = detectFormat(job.source.filename);
@@ -205,7 +216,7 @@ export class IngestService {
         }
         const origAbs = join(this.deps.paths.vault, origRel);
         await mkdir(join(this.deps.paths.vault, '.sanji/originals'), { recursive: true });
-        await writeFile(origAbs, job.source.data);
+        await writeFile(origAbs, job.source.data, { flag: 'wx' });
         originalForFrontmatter = origRel;
       }
     } catch (err) {
