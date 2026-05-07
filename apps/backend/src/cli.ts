@@ -20,6 +20,7 @@ import { searchVaultTool } from './tools/search-vault.js';
 import { semanticSearchTool } from './tools/semantic-search.js';
 import { getNeighborsTool } from './tools/get-neighbors.js';
 import { writeNoteTool } from './tools/write-note.js';
+import { listVaultTool } from './tools/list-vault.js';
 import type { ToolContext } from './tools/types.js';
 import type { ChatEvent, ChatOpts, ProviderAdapter } from '@sanji/shared';
 
@@ -159,6 +160,7 @@ program
       registry.register(semanticSearchTool);
       registry.register(getNeighborsTool);
       registry.register(writeNoteTool);
+      registry.register(listVaultTool);
 
       const rewriterLlm = makeRewriterLlm(adapter);
       const ctx: ToolContext = {
