@@ -24,7 +24,7 @@ interface FtsRow {
 export const searchVaultTool: Tool = {
   name: 'search_vault',
   description:
-    "FTS5 keyword search over note titles + bodies. Use this when the user names exact keywords ('argocd', 'hubspot', etc). For conceptual questions use semantic_search instead. Returns up to N hits as JSON, each {path, title, snippet}.",
+    "(deprecated, prefer hybrid_search) FTS5 keyword search over note titles + bodies. Use this when the user names exact keywords ('argocd', 'hubspot', etc). For conceptual questions use semantic_search instead. Returns up to N hits as JSON, each {path, title, snippet}.",
   inputSchema: {
     type: 'object',
     properties: {

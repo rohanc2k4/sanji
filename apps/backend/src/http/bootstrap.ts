@@ -11,6 +11,7 @@ import { makeAdapter } from '../llm/factory.js';
 import { loadSkills } from '../skills/loader.js';
 import { Registry } from '../tools/registry.js';
 import { readNoteTool } from '../tools/read-note.js';
+import { hybridSearchTool } from '../tools/hybrid-search.js';
 import { searchVaultTool } from '../tools/search-vault.js';
 import { semanticSearchTool } from '../tools/semantic-search.js';
 import { getNeighborsTool } from '../tools/get-neighbors.js';
@@ -82,6 +83,7 @@ export async function bootstrapReadyDeps(vault: string): Promise<ReadyDeps> {
 
   const registry = new Registry();
   registry.register(readNoteTool);
+  registry.register(hybridSearchTool);
   registry.register(searchVaultTool);
   registry.register(semanticSearchTool);
   registry.register(getNeighborsTool);

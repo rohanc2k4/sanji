@@ -127,6 +127,25 @@ describe('IndexRepo — chunks', () => {
     expect(hits[0]?.headerTrail).toEqual(['A', 'B']);
   });
 
+  it('firstChunk returns chunk_index=0 chunk with header_trail and null when missing', async () => {
+    const { repo, embedder } = setup();
+    repo.upsertNote({ path: 'a.md', mtimeMs: 1, body: 'b', frontmatter: null, title: null });
+    expect(repo.firstChunk('a.md')).toBeNull();
+    const v1 = await embedder.embed('alpha');
+    const v2 = await embedder.embed('omega');
+    repo.replaceChunksForNote('a.md', [
+      { chunkIndex: 0, text: 'alpha', startChar: 0, endChar: 5, embedding: v1, headerTrail: ['H'] },
+      { chunkIndex: 1, text: 'omega', startChar: 6, endChar: 11, embedding: v2 },
+    ]);
+    const fc = repo.firstChunk('a.md');
+    expect(fc).not.toBeNull();
+    expect(fc?.chunkIndex).toBe(0);
+    expect(fc?.text).toBe('alpha');
+    expect(fc?.headerTrail).toEqual(['H']);
+    expect(fc?.distance).toBe(0);
+    expect(repo.firstChunk('does-not-exist.md')).toBeNull();
+  });
+
   it('cascades delete from chunks → chunks_vec', async () => {
     const { db, repo, embedder } = setup();
     repo.upsertNote({ path: 'a.md', mtimeMs: 1, body: 'b', frontmatter: null, title: null });

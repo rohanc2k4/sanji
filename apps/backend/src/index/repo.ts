@@ -130,6 +130,37 @@ export class IndexRepo {
     tx();
   }
 
+  firstChunk(path: string): ChunkHit | null {
+    type Row = {
+      id: bigint;
+      notePath: string;
+      chunkIndex: bigint;
+      text: string;
+      startChar: bigint;
+      endChar: bigint;
+      headerTrail: string | null;
+    };
+    const row = this.db
+      .prepare(
+        `SELECT id, note_path AS notePath, chunk_index AS chunkIndex,
+                text, start_char AS startChar, end_char AS endChar,
+                header_trail AS headerTrail
+         FROM chunks WHERE note_path = ? ORDER BY chunk_index ASC LIMIT 1`,
+      )
+      .get(path) as Row | undefined;
+    if (!row) return null;
+    return {
+      id: Number(row.id),
+      notePath: row.notePath,
+      chunkIndex: Number(row.chunkIndex),
+      text: row.text,
+      startChar: Number(row.startChar),
+      endChar: Number(row.endChar),
+      distance: 0,
+      headerTrail: row.headerTrail ? (JSON.parse(row.headerTrail) as string[]) : [],
+    };
+  }
+
   knnChunks(query: Float32Array, k: number): ChunkHit[] {
     type Row = {
       id: bigint;

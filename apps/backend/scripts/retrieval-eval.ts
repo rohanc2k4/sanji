@@ -22,6 +22,9 @@ import { Indexer } from '../src/index/indexer.js';
 import { IndexRepo } from '../src/index/repo.js';
 import { FakeEmbedder, type Embedder } from '../src/embeddings/embedder.js';
 import { TransformersEmbedder } from '../src/embeddings/transformers.js';
+import { hybridSearchTool } from '../src/tools/hybrid-search.js';
+import { resolveVaultPaths } from '../src/config/paths.js';
+import type { ToolContext } from '../src/tools/types.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -80,6 +83,7 @@ async function topPathsForQuery(
   repo: IndexRepo,
   embedder: Embedder,
   k: number,
+  vaultPath: string,
 ): Promise<string[]> {
   if (method === 'fts') {
     const expr = ftsExpr(query);
@@ -96,7 +100,18 @@ async function topPathsForQuery(
     const hits = repo.knnChunks(vec, k * 4);
     return dedupeByPath(hits.map((h) => h.notePath), k);
   }
-  throw new Error(`hybrid retrieval not implemented yet (lands in Task 4)`);
+  if (method === 'hybrid') {
+    const ctx: ToolContext = {
+      paths: resolveVaultPaths(vaultPath),
+      db,
+      repo,
+      embedder,
+    };
+    const out = await hybridSearchTool.run({ query, limit: k * 4 }, ctx);
+    const hits = JSON.parse(out) as Array<{ path: string }>;
+    return dedupeByPath(hits.map((h) => h.path), k);
+  }
+  throw new Error(`unknown retrieval method=${method}`);
 }
 
 function pad(s: string, w: number): string {
@@ -141,7 +156,7 @@ async function main() {
     let hits = 0;
     let mrrSum = 0;
     for (const fx of fixtures) {
-      const top = await topPathsForQuery(method, fx.query, db, repo, embedder, K);
+      const top = await topPathsForQuery(method, fx.query, db, repo, embedder, K, vaultPath);
       const rank = top.indexOf(fx.expected);
       const recall = rank >= 0;
       if (recall) hits += 1;

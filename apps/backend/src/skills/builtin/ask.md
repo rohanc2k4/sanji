@@ -3,6 +3,7 @@ name: ask
 description: "Default Q&A over the vault"
 trigger: /ask
 tools:
+  - hybrid_search
   - search_vault
   - semantic_search
   - read_note
