@@ -19,6 +19,7 @@ import { semanticSearchTool } from '../tools/semantic-search.js';
 import { getNeighborsTool } from '../tools/get-neighbors.js';
 import { writeNoteTool } from '../tools/write-note.js';
 import { listVaultTool } from '../tools/list-vault.js';
+import { grepVaultTool } from '../tools/grep-vault.js';
 import { configToDto } from './dto.js';
 import type { ServerDeps } from './deps.js';
 
@@ -92,6 +93,7 @@ export async function bootstrapReadyDeps(vault: string): Promise<ReadyDeps> {
   registry.register(getNeighborsTool);
   registry.register(writeNoteTool);
   registry.register(listVaultTool);
+  registry.register(grepVaultTool);
 
   const repo = new IndexRepo(db);
 
