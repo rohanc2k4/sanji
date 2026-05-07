@@ -13,6 +13,7 @@ export interface StatusRow {
   fileId: string;
   sourceName: string;
   phase: StatusPhase;
+  startedAt?: number;
   outputPath?: string;
   existingPath?: string;
   errorMessage?: string;
@@ -30,7 +31,11 @@ export function applyIngestEvent(rows: StatusRow[], ev: IngestEvent): StatusRow[
     case 'rewriting':
     case 'writing':
       if (idx < 0) return rows;
-      return rows.map((r, i) => (i === idx ? { ...r, phase: ev.kind } : r));
+      return rows.map((r, i) =>
+        i === idx
+          ? { ...r, phase: ev.kind, startedAt: r.startedAt ?? Date.now() }
+          : r,
+      );
     case 'done':
       if (idx < 0) return rows;
       return rows.map((r, i) =>

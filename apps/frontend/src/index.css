@@ -144,3 +144,12 @@
 }
 .animate-mascot-breathe { animation: mascot-breathe 4.5s ease-in-out infinite; }
 .animate-ear-twitch { animation: ear-twitch 5s ease-in-out infinite; }
+
+/* Indeterminate progress used by IngestStatusPanel during the rewriting
+   phase, where Claude can take 30-60s with no streamed-progress signal —
+   honest "still working" indicator instead of a faked percentage. */
+@keyframes progress-indeterminate {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
+}
+.animate-progress-indeterminate { animation: progress-indeterminate 1.4s ease-in-out infinite; }

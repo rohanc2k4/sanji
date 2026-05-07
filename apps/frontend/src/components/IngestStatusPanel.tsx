@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { CheckCircle2, AlertCircle, Loader2, X } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
@@ -23,6 +23,10 @@ const PROGRESS_BY_PHASE: Record<StatusPhase, number> = {
 
 const TERMINAL_AUTO_DISMISS_MS = 30_000;
 
+function isActivePhase(p: StatusPhase): boolean {
+  return p !== 'done' && p !== 'skipped' && p !== 'error';
+}
+
 export function IngestStatusPanel({
   rows,
   onDismiss,
@@ -36,13 +40,24 @@ export function IngestStatusPanel({
     return () => timers.forEach(clearTimeout);
   }, [rows, onDismiss]);
 
+  // Tick a clock once a second while there's an active row so each row's
+  // elapsed-time counter refreshes. No-op when nothing's active.
+  const [now, setNow] = useState(() => Date.now());
+  const hasActive = rows.some((r) => isActivePhase(r.phase));
+  useEffect(() => {
+    if (!hasActive) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [hasActive]);
+
   if (rows.length === 0) return null;
 
   return (
     <div className="pointer-events-none fixed right-4 top-[60px] z-30 w-80 space-y-1.5">
       {rows.map((r) => {
-        const isActive =
-          r.phase !== 'done' && r.phase !== 'skipped' && r.phase !== 'error';
+        const isActive = isActivePhase(r.phase);
+        const elapsedSec =
+          isActive && r.startedAt ? Math.max(0, Math.floor((now - r.startedAt) / 1000)) : null;
         return (
           <div
             key={r.fileId}
@@ -62,7 +77,10 @@ export function IngestStatusPanel({
               <span className="truncate font-mono text-foreground" title={r.sourceName}>
                 {r.sourceName}
               </span>
-              <span className="ml-auto shrink-0 text-muted-foreground/70">{r.phase}</span>
+              <span className="ml-auto shrink-0 text-muted-foreground/70">
+                {r.phase}
+                {elapsedSec !== null ? ` · ${elapsedSec}s` : ''}
+              </span>
               <Button
                 size="icon-xs"
                 variant="ghost"
@@ -74,7 +92,16 @@ export function IngestStatusPanel({
                 <X />
               </Button>
             </div>
-            {isActive && (
+            {/* Rewriting can take 30-60s with no real progress signal from
+                Claude, so a determinate bar would lie. Switch to an
+                indeterminate animated bar during that phase; keep determinate
+                progress during the short extract / write phases. */}
+            {isActive && r.phase === 'rewriting' && (
+              <div className="relative mt-1.5 h-1 w-full overflow-hidden rounded-full bg-muted">
+                <div className="absolute h-full w-1/3 rounded-full bg-primary animate-progress-indeterminate" />
+              </div>
+            )}
+            {isActive && r.phase !== 'rewriting' && (
               <Progress value={PROGRESS_BY_PHASE[r.phase]} className="mt-1.5 h-1" />
             )}
             {r.phase === 'done' && r.outputPath && (

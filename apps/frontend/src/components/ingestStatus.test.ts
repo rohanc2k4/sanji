@@ -72,4 +72,16 @@ describe('applyIngestEvent', () => {
     rows = applyIngestEvent(rows, { kind: 'queued', fileId: 'a', sourceName: 'p.pdf' });
     expect(rows).toHaveLength(1);
   });
+
+  it('stamps startedAt on the first working-phase event and preserves it through later phases', () => {
+    let rows = applyIngestEvent([], { kind: 'queued', fileId: 'a', sourceName: 'p.pdf' });
+    expect(rows[0]?.startedAt).toBeUndefined();
+    rows = applyIngestEvent(rows, { kind: 'extracting', fileId: 'a', sourceName: 'p.pdf' });
+    const stamped = rows[0]?.startedAt;
+    expect(typeof stamped).toBe('number');
+    rows = applyIngestEvent(rows, { kind: 'rewriting', fileId: 'a', sourceName: 'p.pdf' });
+    expect(rows[0]?.startedAt).toBe(stamped);
+    rows = applyIngestEvent(rows, { kind: 'writing', fileId: 'a', sourceName: 'p.pdf' });
+    expect(rows[0]?.startedAt).toBe(stamped);
+  });
 });
