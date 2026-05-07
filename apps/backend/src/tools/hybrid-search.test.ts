@@ -124,6 +124,36 @@ describe('hybridSearchTool', () => {
     expect(explicit.length).toBe(3);
   });
 
+  it('uses ctx.rewriter to fan queries out and benefits from cross-query agreement', async () => {
+    const { ctx, repo, embedder } = await setup();
+    // Two notes share fts/dense agreement on different vocabulary. The
+    // original query hits one paraphrase well; a rewrite hits the other.
+    await seedNote(repo, embedder, 'agreed.md', 'argo helm chart manifest', [
+      { text: 'argo helm chart manifest' },
+    ]);
+    await seedNote(repo, embedder, 'distractor.md', 'unrelated cooking topic', [
+      { text: 'unrelated cooking topic' },
+    ]);
+    const rewriter = async (_q: string) => ['argo helm chart manifest'];
+    const ctxWithRewriter = { ...ctx, rewriter };
+    const out = await hybridSearchTool.run(
+      { query: 'kubernetes deployment manifest' },
+      ctxWithRewriter,
+    );
+    const hits = JSON.parse(out) as Array<{ path: string }>;
+    expect(hits[0]?.path).toBe('agreed.md');
+  });
+
+  it('degrades to single-query behavior when rewriter returns []', async () => {
+    const { ctx, repo, embedder } = await setup();
+    await seedNote(repo, embedder, 'a.md', 'alpha bravo body', [{ text: 'alpha bravo' }]);
+    const rewriter = async () => [];
+    const ctxWithRewriter = { ...ctx, rewriter };
+    const out = await hybridSearchTool.run({ query: 'alpha bravo' }, ctxWithRewriter);
+    const hits = JSON.parse(out) as Array<{ path: string }>;
+    expect(hits[0]?.path).toBe('a.md');
+  });
+
   it('throws on empty/missing query', async () => {
     const { ctx } = await setup();
     await expect(hybridSearchTool.run({ query: '' }, ctx)).rejects.toThrow(/query/);

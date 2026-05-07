@@ -65,6 +65,12 @@ export interface OneShotOpts {
    */
   segments: OneShotSegment[];
   maxTokens?: number;
+  /**
+   * Sampling temperature. Defaults to 0 (deterministic) when omitted, which
+   * is what utility calls like contextual blurbs want. The multi-query
+   * rewriter passes ~0.7 to encourage paraphrase variation.
+   */
+  temperature?: number;
 }
 
 export interface ProviderAdapter {

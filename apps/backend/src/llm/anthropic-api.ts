@@ -57,6 +57,7 @@ export class AnthropicApiAdapter implements ProviderAdapter {
     const resp = await this.client.messages.create({
       model: opts.model,
       max_tokens: opts.maxTokens ?? 256,
+      temperature: opts.temperature ?? 0,
       ...(opts.system ? { system: opts.system } : {}),
       messages: [{ role: 'user', content: content as unknown as Anthropic.TextBlockParam[] }],
     } as Anthropic.MessageCreateParamsNonStreaming);

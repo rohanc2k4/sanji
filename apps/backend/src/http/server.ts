@@ -9,6 +9,8 @@ import { indexingRoute } from './routes/indexing.js';
 import { ingestRoute } from './routes/ingest.js';
 import { Indexer } from '../index/indexer.js';
 import { makeBlurbLlm } from '../retrieval/contextual-blurb-deps.js';
+import { makeRewriterLlm } from '../retrieval/rewriter-deps.js';
+import { rewriteQuery } from '../retrieval/rewriter.js';
 import type { ServerDeps } from './deps.js';
 import { teardownReadyDeps, type ReadyDeps } from './bootstrap.js';
 
@@ -41,6 +43,8 @@ function buildRoutes(
             db: deps.db,
             repo: deps.repo,
             embedder: deps.embedder,
+            rewriter: ((rewriterLlm) => (q: string) =>
+              rewriteQuery(q, { llm: rewriterLlm }))(makeRewriterLlm(deps.adapter)),
           },
           skills: deps.skills,
           defaultModel: deps.cfg.models.default,

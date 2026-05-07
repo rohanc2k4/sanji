@@ -9,6 +9,8 @@ import { FakeEmbedder, type Embedder } from './embeddings/embedder.js';
 import { TransformersEmbedder } from './embeddings/transformers.js';
 import { makeAdapter } from './llm/factory.js';
 import { makeBlurbLlm } from './retrieval/contextual-blurb-deps.js';
+import { makeRewriterLlm } from './retrieval/rewriter-deps.js';
+import { rewriteQuery } from './retrieval/rewriter.js';
 import { runAgent } from './agent/run.js';
 import { loadSkills } from './skills/loader.js';
 import { Registry } from './tools/registry.js';
@@ -155,7 +157,14 @@ program
       registry.register(getNeighborsTool);
       registry.register(writeNoteTool);
 
-      const ctx: ToolContext = { paths, db, repo: new IndexRepo(db), embedder };
+      const rewriterLlm = makeRewriterLlm(adapter);
+      const ctx: ToolContext = {
+        paths,
+        db,
+        repo: new IndexRepo(db),
+        embedder,
+        rewriter: (q: string) => rewriteQuery(q, { llm: rewriterLlm }),
+      };
 
       const stream = runAgent(
         { adapter, registry, ctx, skills, defaultModel: cfg.models.default },
