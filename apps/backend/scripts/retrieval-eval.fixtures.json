@@ -1,0 +1,12 @@
+[
+  { "query": "wire format in the ATM project", "expected": "inbox/414_design_doc.md" },
+  { "query": "what cryptographic primitives does the bank use", "expected": "inbox/414_design_doc.md" },
+  { "query": "how do we prevent replay attacks between teller and server", "expected": "inbox/414_design_doc.md" },
+  { "query": "training a binary classifier with mini-batch updates", "expected": "inbox/lr_sgd.md" },
+  { "query": "solving a linear system with row operations in a matrix homework", "expected": "inbox/Project1.md" },
+  { "query": "uninformed vs informed search and local optimization for the AI exam", "expected": "inbox/421 Cheat Sheet.md" },
+  { "query": "how do you get the milky emulsified pork broth for ramen", "expected": "recipes/tonkotsu-ramen.md" },
+  { "query": "distributed sorting with pivot sampling across processes", "expected": "school/cmsc416/parallel-sorting.md" },
+  { "query": "best low rank approximation theorem from linear algebra", "expected": "school/math401/svd-notes.md" },
+  { "query": "second palate for Saturday roast tastings", "expected": "people/jordan.md" }
+]
