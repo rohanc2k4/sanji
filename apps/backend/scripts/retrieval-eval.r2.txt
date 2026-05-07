@@ -1,4 +1,4 @@
-[eval] method=hybrid vault=/Users/rohanchawla/Dev_Projects/sanji/sample-vault db=/tmp/sanji-eval-1778168999921.db
+[eval] method=hybrid vault=/Users/rohanchawla/Dev_Projects/sanji/sample-vault db=/tmp/sanji-eval-1778169142510.db
 [eval] indexed 22 notes / 113 chunks in 2.4s
 
 Query                                       Expected                                Top1Path                                R@5   Rank 

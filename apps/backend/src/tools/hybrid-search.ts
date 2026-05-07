@@ -63,30 +63,54 @@ export const hybridSearchTool: Tool = {
     const vec = await ctx.embedder.embed(query);
     const denseHits = ctx.repo.knnChunks(vec, CANDIDATE_K);
 
-    const ftsIds = ftsRows.map((r) => `${r.path}:fts`);
-    const denseIds = denseHits.map((h) => `${h.notePath}:${h.chunkIndex}`);
+    // Dedupe dense hits to one per path, keeping the best (lowest distance,
+    // smallest chunkIndex on tie). Walk the original rank order from
+    // knnChunks and take each path the first time we see it (after picking
+    // the best chunk for that path). This preserves rank order so RRF sees
+    // a meaningful position for each path.
+    const bestDensePerPath = new Map<string, (typeof denseHits)[number]>();
+    for (const h of denseHits) {
+      const existing = bestDensePerPath.get(h.notePath);
+      if (
+        !existing ||
+        h.distance < existing.distance ||
+        (h.distance === existing.distance && h.chunkIndex < existing.chunkIndex)
+      ) {
+        bestDensePerPath.set(h.notePath, h);
+      }
+    }
+    const dedupedRanked: typeof denseHits = [];
+    const seen = new Set<string>();
+    for (const h of denseHits) {
+      if (!seen.has(h.notePath)) {
+        seen.add(h.notePath);
+        dedupedRanked.push(bestDensePerPath.get(h.notePath)!);
+      }
+    }
+
+    const ftsIds = ftsRows.map((r) => r.path);
+    const denseIds = dedupedRanked.map((h) => h.notePath);
     const fused = rrfFuse([ftsIds, denseIds], { k: RRF_K }).slice(0, limit);
 
-    const denseById = new Map(denseHits.map((h) => [`${h.notePath}:${h.chunkIndex}`, h]));
+    const denseByPath = new Map(dedupedRanked.map((h) => [h.notePath, h]));
 
-    const out: FusedHit[] = fused.map(({ id, score }) => {
-      if (id.endsWith(':fts')) {
-        const path = id.slice(0, -':fts'.length);
-        const fc = ctx.repo.firstChunk(path);
+    const out: FusedHit[] = fused.map(({ id: path, score }) => {
+      const dh = denseByPath.get(path);
+      if (dh) {
         return {
           path,
-          chunkIndex: fc?.chunkIndex ?? 0,
-          text: fc?.text ?? '',
-          headerTrail: fc?.headerTrail ?? [],
+          chunkIndex: dh.chunkIndex,
+          text: dh.text,
+          headerTrail: dh.headerTrail ?? [],
           fusedScore: score,
         };
       }
-      const h = denseById.get(id)!;
+      const fc = ctx.repo.firstChunk(path);
       return {
-        path: h.notePath,
-        chunkIndex: h.chunkIndex,
-        text: h.text,
-        headerTrail: h.headerTrail ?? [],
+        path,
+        chunkIndex: fc?.chunkIndex ?? 0,
+        text: fc?.text ?? '',
+        headerTrail: fc?.headerTrail ?? [],
         fusedScore: score,
       };
     });
