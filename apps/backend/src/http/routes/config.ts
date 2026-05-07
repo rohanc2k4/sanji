@@ -22,6 +22,9 @@ const PatchSchema = z.object({
     chunkOverlapTokens: z.number().int().nonnegative(),
     embeddingModel: z.string(),
   }).partial().optional(),
+  ingestion: z.object({
+    contextualRetrieval: z.boolean(),
+  }).partial().optional(),
   ui: z.object({
     theme: z.enum(['auto', 'light', 'dark']),
     mascot: z.enum(['chatty', 'quiet', 'off']),
@@ -35,6 +38,7 @@ function mergeDto(current: ConfigDto, patch: z.infer<typeof PatchSchema>): Confi
     calendar: { ...current.calendar, ...patch.calendar },
     search: { ...current.search, ...patch.search },
     indexing: { ...current.indexing, ...patch.indexing },
+    ingestion: { ...current.ingestion, ...patch.ingestion },
     ui: { ...current.ui, ...patch.ui },
   };
 }

@@ -36,6 +36,16 @@ export const ConfigSchema = z
         chunk_overlap_tokens: 50,
         embedding_model: 'Xenova/all-MiniLM-L6-v2',
       }),
+    ingestion: z
+      .object({
+        // R1 Anthropic contextual retrieval. When true, every changed chunk
+        // sends the full parent note body and the chunk text to the configured
+        // LLM at index time. Improves retrieval at the cost of LLM tokens and
+        // sending note bodies to the provider. Default off in v0.1; flip via
+        // .sanji/config.toml. No UI surface for it in v0.1 (file-only).
+        contextual_retrieval: z.boolean().default(false),
+      })
+      .default({ contextual_retrieval: false }),
     ui: z
       .object({
         theme: z.enum(['auto', 'light', 'dark']).default('auto'),

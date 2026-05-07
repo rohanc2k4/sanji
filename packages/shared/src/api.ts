@@ -21,6 +21,7 @@ export interface ConfigDto {
   calendar: { urls: Array<{ label: string; url: string }>; pollIntervalMinutes: number };
   search: { tavilyApiKey: string };
   indexing: { chunkSizeTokens: number; chunkOverlapTokens: number; embeddingModel: string };
+  ingestion: { contextualRetrieval: boolean };
   ui: { theme: 'auto' | 'light' | 'dark'; mascot: 'chatty' | 'quiet' | 'off' };
 }
 

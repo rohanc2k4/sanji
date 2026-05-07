@@ -40,6 +40,7 @@ const sampleConfig = {
     chunkOverlapTokens: 50,
     embeddingModel: 'Xenova/all-MiniLM-L6-v2',
   },
+  ingestion: { contextualRetrieval: false },
   ui: { theme: 'auto' as const, mascot: 'chatty' as const },
 };
 

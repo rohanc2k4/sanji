@@ -71,7 +71,10 @@ program
       const ix = new Indexer(db, embedder, {
         chunkSizeTokens: cfg.indexing.chunk_size_tokens,
         chunkOverlapTokens: cfg.indexing.chunk_overlap_tokens,
-        blurbLlm: makeBlurbLlm(adapter),
+        // Contextual retrieval is opt-in via [ingestion] contextual_retrieval.
+        ...(cfg.ingestion.contextual_retrieval
+          ? { blurbLlm: makeBlurbLlm(adapter) }
+          : {}),
       });
       const stats = await ix.indexAll(paths.vault);
       console.log(

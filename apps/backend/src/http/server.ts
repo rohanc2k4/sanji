@@ -57,7 +57,12 @@ function buildRoutes(
       const ix = new Indexer(deps.db, deps.embedder, {
         chunkSizeTokens: deps.cfg.indexing.chunkSizeTokens,
         chunkOverlapTokens: deps.cfg.indexing.chunkOverlapTokens,
-        blurbLlm: makeBlurbLlm(deps.adapter),
+        // Contextual retrieval is opt-in. When disabled (default in v0.1),
+        // chunks index without LLM-generated context blurbs and no calls
+        // are made to the configured provider at index time.
+        ...(deps.cfg.ingestion.contextualRetrieval
+          ? { blurbLlm: makeBlurbLlm(deps.adapter) }
+          : {}),
       });
       await ix.indexAll(deps.paths.vault, { onProgress: cb });
     };

@@ -19,6 +19,7 @@ export function configToDto(c: Config): ConfigDto {
       chunkOverlapTokens: c.indexing.chunk_overlap_tokens,
       embeddingModel: c.indexing.embedding_model,
     },
+    ingestion: { contextualRetrieval: c.ingestion.contextual_retrieval },
     ui: { theme: c.ui.theme, mascot: c.ui.mascot },
   };
 }
@@ -41,6 +42,7 @@ export function dtoToConfig(dto: ConfigDto, current: Config): Config {
       chunk_overlap_tokens: dto.indexing.chunkOverlapTokens,
       embedding_model: dto.indexing.embeddingModel,
     },
+    ingestion: { contextual_retrieval: dto.ingestion?.contextualRetrieval ?? false },
     ui: { theme: dto.ui.theme, mascot: dto.ui.mascot },
   };
 }

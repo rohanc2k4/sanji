@@ -46,14 +46,20 @@ export class AnthropicApiAdapter implements ProviderAdapter {
   }
 
   async oneShot(opts: OneShotOpts): Promise<string> {
-    const content = opts.segments.map((s) => {
-      const block: { type: 'text'; text: string; cache_control?: { type: 'ephemeral' } } = {
-        type: 'text',
-        text: s.text,
-      };
-      if (s.cache) block.cache_control = { type: 'ephemeral' };
-      return block;
-    });
+    // NOTE: prompt caching intentionally not wired on this branch. SDK 0.32.1
+    // exposes caching only under `client.beta.promptCaching.messages.create`
+    // (with `PromptCachingBetaTextBlockParam`), and the standard
+    // `messages.create` `TextBlockParam` does NOT accept `cache_control`.
+    // Attaching it to the standard call would either 400 or be silently
+    // dropped. We drop the `s.cache` hint here and pay full per-chunk cost
+    // when contextual retrieval is enabled. v0.2 backlog: route through
+    // `client.beta.promptCaching.messages.create` (or the SDK's native
+    // `cache_control` support once it lands on the standard API) so the
+    // parent-document segment is cached across chunks of the same note.
+    const content: Array<{ type: 'text'; text: string }> = opts.segments.map((s) => ({
+      type: 'text',
+      text: s.text,
+    }));
     const resp = await this.client.messages.create({
       model: opts.model,
       max_tokens: opts.maxTokens ?? 256,

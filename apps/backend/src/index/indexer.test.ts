@@ -1,4 +1,4 @@
-import { describe, expect, it, afterEach } from 'vitest';
+import { describe, expect, it, afterEach, vi } from 'vitest';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { makeTmpDir } from '../../tests/helpers/tmp-db.js';
@@ -11,7 +11,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const cleanups: Array<() => void> = [];
 afterEach(() => { while (cleanups.length) cleanups.pop()!(); });
 
-function newIndexer() {
+function newIndexer(opts?: { blurbLlm?: (call: any) => Promise<string> }) {
   const { dir, cleanup } = makeTmpDir();
   cleanups.push(cleanup);
   const db = openDb(join(dir, 'index.db'));
@@ -19,6 +19,7 @@ function newIndexer() {
   const ix = new Indexer(db, new FakeEmbedder(), {
     chunkSizeTokens: 100,
     chunkOverlapTokens: 10,
+    ...(opts?.blurbLlm ? { blurbLlm: opts.blurbLlm } : {}),
   });
   return { db, ix };
 }
@@ -78,6 +79,68 @@ describe('Indexer', () => {
       const c = calls[i]!;
       expect(c.total).toBe(expectedTotal);
       expect(c.done).toBe(i + 1);
+    }
+  });
+
+  // R1 contextual retrieval is opt-in: when no blurbLlm is wired, the indexer
+  // must not call any LLM and must persist context_text = null on every chunk.
+  it('does not invoke any LLM when blurbLlm is omitted (opt-in surface)', async () => {
+    const blurb = vi.fn(async () => 'should not be called');
+    const { db, ix } = newIndexer(); // no blurbLlm
+    const stats = await ix.indexAll(FIXTURE_VAULT);
+    expect(blurb).not.toHaveBeenCalled();
+    expect(stats.blurbsAttempted).toBe(0);
+    expect(stats.blurbsFailed).toBe(0);
+    const ctxRow = db
+      .prepare("SELECT count(*) AS n FROM chunks WHERE context_text IS NOT NULL")
+      .get() as { n: bigint };
+    expect(Number(ctxRow.n)).toBe(0);
+    const total = db.prepare('SELECT count(*) AS n FROM chunks').get() as { n: bigint };
+    expect(Number(total.n)).toBeGreaterThan(0);
+  });
+
+  // When blurbLlm is wired, every chunk attempt routes through it and the
+  // result lands in context_text. Confirms we actually use the dep.
+  it('writes blurb output to context_text when blurbLlm is wired', async () => {
+    const blurb = vi.fn(async () => 'stub-context');
+    const { db, ix } = newIndexer({ blurbLlm: blurb });
+    const stats = await ix.indexAll(FIXTURE_VAULT);
+    expect(blurb).toHaveBeenCalled();
+    expect(stats.blurbsAttempted).toBeGreaterThan(0);
+    expect(stats.blurbsFailed).toBe(0);
+    expect(blurb.mock.calls.length).toBe(stats.blurbsAttempted);
+    const ctxRow = db
+      .prepare("SELECT count(*) AS n FROM chunks WHERE context_text = 'stub-context'")
+      .get() as { n: bigint };
+    expect(Number(ctxRow.n)).toBeGreaterThan(0);
+  });
+
+  // When the blurb LLM rejects on every call, indexing must still complete
+  // (chunks land with context_text=null), and the failure must surface in
+  // aggregate stats + a stderr ERROR line so it isn't silently lost.
+  it('surfaces aggregate blurb failures instead of silently nulling context', async () => {
+    const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    try {
+      const blurb = vi.fn(async () => {
+        throw new Error('upstream 400');
+      });
+      const { db, ix } = newIndexer({ blurbLlm: blurb });
+      const stats = await ix.indexAll(FIXTURE_VAULT);
+      // Chunks still got written, just without context.
+      const total = db.prepare('SELECT count(*) AS n FROM chunks').get() as { n: bigint };
+      expect(Number(total.n)).toBeGreaterThan(0);
+      const ctxNotNull = db
+        .prepare('SELECT count(*) AS n FROM chunks WHERE context_text IS NOT NULL')
+        .get() as { n: bigint };
+      expect(Number(ctxNotNull.n)).toBe(0);
+      // Aggregate counts surface the failure mode.
+      expect(stats.blurbsAttempted).toBeGreaterThan(0);
+      expect(stats.blurbsFailed).toBe(stats.blurbsAttempted);
+      // Aggregate ERROR line printed once at the end of indexAll.
+      const writes = stderr.mock.calls.map((c) => String(c[0]));
+      expect(writes.some((w) => /ERROR: contextual retrieval failed for ALL/.test(w))).toBe(true);
+    } finally {
+      stderr.mockRestore();
     }
   });
 
