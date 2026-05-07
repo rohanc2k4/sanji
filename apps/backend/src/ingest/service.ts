@@ -6,7 +6,7 @@ import type { Skill } from '../skills/parse.js';
 import type { VaultPaths } from '../config/paths.js';
 import type { IndexRepo } from '../index/repo.js';
 import { detectFormat, extractByFormat } from './extractors/index.js';
-import { rewrite } from './rewrite.js';
+import { rewrite, review } from './rewrite.js';
 import { buildVaultContext, type VaultContext } from './context.js';
 import { parseNote } from '../vault/parse.js';
 
@@ -14,8 +14,16 @@ export interface IngestServiceDeps {
   paths: VaultPaths;
   repo: IndexRepo;
   adapter: ProviderAdapter;
+  /** Model used for the bulk rewrite (Stage 1, Haiku-class for speed). */
   model: string;
   ingestSkill: Skill;
+  /**
+   * Optional Stage-2 model for the review crosscheck. Sonnet-class is the
+   * intended default — Haiku writes, Sonnet reviews. If absent, the service
+   * skips review entirely and behaves like single-stage. Falls back silently
+   * to Stage 1 output if the review pass fails to parse.
+   */
+  reviewModel?: string;
 }
 
 export interface IngestJob {
@@ -213,6 +221,34 @@ export class IngestService {
           : `Rewrite failed for ${name}: ${(err as Error).message}.`,
       };
       return;
+    }
+
+    // Stage 2: optional Sonnet-class review crosscheck. Quality gate, not a
+    // correctness gate — if review fails to parse, fall back to Stage 1's
+    // output rather than failing the ingest.
+    if (this.deps.reviewModel) {
+      yield { kind: 'reviewing', fileId: job.fileId, sourceName: name };
+      try {
+        const reviewed = await review(
+          {
+            extracted: { text, pages, warnings },
+            draft: result,
+            abortSignal: job.abortController.signal,
+          },
+          { adapter: this.deps.adapter, model: this.deps.reviewModel },
+        );
+        if (reviewed) result = reviewed;
+      } catch (err) {
+        if (job.abortController.signal.aborted) {
+          yield {
+            kind: 'error', fileId: job.fileId, sourceName: name,
+            phase: 'review', message: 'Cancelled by user.',
+          };
+          return;
+        }
+        // Non-cancellation failure: keep Stage 1 output, log to stderr, move on.
+        process.stderr.write(`ingest review failed for ${name}: ${(err as Error).message}\n`);
+      }
     }
 
     yield { kind: 'writing', fileId: job.fileId, sourceName: name };

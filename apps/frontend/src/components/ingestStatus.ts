@@ -4,6 +4,7 @@ export type StatusPhase =
   | 'queued'
   | 'extracting'
   | 'rewriting'
+  | 'reviewing'
   | 'writing'
   | 'done'
   | 'skipped'
@@ -29,6 +30,7 @@ export function applyIngestEvent(rows: StatusRow[], ev: IngestEvent): StatusRow[
       return [...rows, { fileId: ev.fileId, sourceName: ev.sourceName, phase: 'queued' }];
     case 'extracting':
     case 'rewriting':
+    case 'reviewing':
     case 'writing':
       if (idx < 0) return rows;
       return rows.map((r, i) =>

@@ -20,12 +20,13 @@ export interface NoteFrontmatter {
   pages?: number;
 }
 
-export type IngestEventPhase = 'extract' | 'rewrite' | 'write';
+export type IngestEventPhase = 'extract' | 'rewrite' | 'review' | 'write';
 
 export type IngestEvent =
   | { kind: 'queued'; fileId: string; sourceName: string }
   | { kind: 'extracting'; fileId: string; sourceName: string }
   | { kind: 'rewriting'; fileId: string; sourceName: string; tokensInput?: number }
+  | { kind: 'reviewing'; fileId: string; sourceName: string }
   | { kind: 'writing'; fileId: string; sourceName: string }
   | {
       kind: 'done';

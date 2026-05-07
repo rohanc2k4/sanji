@@ -3,7 +3,7 @@ name: ingest
 trigger: /ingest
 description: Convert one source document into a structured markdown note in the vault.
 tools: []
-model: claude-sonnet-4-6
+model: claude-haiku-4-5-20251001
 ---
 
 # Sanji ingest skill

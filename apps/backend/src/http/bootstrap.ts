@@ -26,7 +26,11 @@ class OfflineFakeAdapter implements ProviderAdapter {
     // frontmatter, so we recognize it from `opts.system` and emit a valid
     // structured note instead of the generic offline placeholder. Lets the
     // ingestion E2E run without real Claude auth.
-    if (opts.system?.trimStart().startsWith('# Sanji ingest skill')) {
+    const trimmedSystem = opts.system?.trimStart() ?? '';
+    if (
+      trimmedSystem.startsWith('# Sanji ingest skill') ||
+      trimmedSystem.startsWith('# Sanji ingest review')
+    ) {
       const fixture = `---
 title: tiny
 source: paste
@@ -96,11 +100,18 @@ export async function bootstrapReadyDeps(vault: string): Promise<ReadyDeps> {
   if (!ingestSkill) {
     throw new Error('bundled ingest skill not found in skills/');
   }
+  // Two-stage rewrite: Haiku for the bulk pass (fast, ~5-10s), Sonnet
+  // (cfg.models.default) for the crosscheck review pass. Hardcoded for v0.1
+  // pending settings-drawer wiring in v0.2. The review model falls back to
+  // the user's default if cfg.models.default isn't a Sonnet variant; that's
+  // a sensible behavior when a user has explicitly chosen Opus or Haiku as
+  // their default.
   const ingestService = new IngestService({
     paths,
     repo,
     adapter,
-    model: cfg.models.default,
+    model: 'claude-haiku-4-5-20251001',
+    reviewModel: cfg.models.default,
     ingestSkill,
   });
 
