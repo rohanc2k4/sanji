@@ -37,24 +37,33 @@ Backend: `apps/backend` (Hono + better-sqlite3 + sqlite-vec + transformers.js).
 Frontend: `apps/frontend` (React 19 + Vite + CodeMirror 6).
 Shared types: `packages/shared` (Zod schemas, used by both).
 
+## How retrieval works
+
+Sanji defaults to agentic search for vaults under ~5000 notes. The agent uses `list_vault` to orient and `grep_vault` to search by pattern, then reads matching notes via `read_note`. It iterates with different patterns if the first pass comes up empty. Same approach Cursor and Claude Code use for codebases.
+
+Above the size threshold, the agent falls back to `hybrid_search`, which fuses BM25 (FTS5) and dense (sqlite-vec) retrieval via Reciprocal Rank Fusion, with optional contextual retrieval and multi-query rewriting on top.
+
+For best grep performance, install ripgrep on your machine:
+
+```bash
+# macOS
+brew install ripgrep
+
+# Debian/Ubuntu
+apt install ripgrep
+```
+
+Sanji falls back to a pure-Node regex walker if ripgrep is absent. Slower on large vaults; functionally equivalent.
+
+Contextual retrieval (per-chunk Anthropic-style context blurbs prepended to embedding inputs) is opt-in via `[ingestion] contextual_retrieval = true` in `~/.config/sanji/config.toml`. Defaults off in v0.1 because it sends note bodies to your configured LLM on every index pass.
+
 ## Ingestion config
 
 Sanji indexes the markdown vault on disk into a local SQLite + sqlite-vec store at `<vault>/.sanji/index.db`. Settings live in `<vault>/.sanji/config.toml` under `[indexing]` (chunk size, embedding model) and `[ingestion]` (retrieval-time LLM features).
 
 ```toml
 [ingestion]
-# Anthropic-style contextual retrieval. When true, every changed chunk is sent
-# to the configured LLM along with the full parent note body to generate a
-# short context blurb. The blurb is concatenated into the embedded text and
-# stored on the chunk row, which lifts retrieval recall on chunked notes.
-#
-# Cost: one LLM call per chunk per index pass against the configured provider
-# (Anthropic API key or Claude Code subscription). Note bodies are sent to the
-# provider, so do not enable on a vault you do not want to send out.
-#
-# Default in v0.1: false. Flip to true if you want the recall lift and accept
-# the cost and data-egress tradeoff. There is no UI surface for this in v0.1
-# (file-only); v0.2 will add a settings drawer.
+# See "How retrieval works" above for the cost/recall tradeoff.
 contextual_retrieval = false
 ```
 
