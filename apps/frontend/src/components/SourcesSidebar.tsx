@@ -175,6 +175,12 @@ function RenameRow({ indent, initialDraft, onCommit, onCancel }: RenameRowProps)
     inputRef.current?.select();
   }, []);
 
+  // The input is sized + chromed to match the leaf TreeRow button exactly:
+  // same `h-7` row, same `text-sm`, no border (which would shift width),
+  // transparent background flush with the sidebar. Focus state shows via a
+  // ring (box-shadow, no layout impact) and a subtle background contrast.
+  // Combined with the viewport meta in index.html (maximum-scale=1.0), the
+  // rename mode produces zero visible movement.
   return (
     <div
       style={{ paddingLeft: indent }}
@@ -195,13 +201,7 @@ function RenameRow({ indent, initialDraft, onCommit, onCancel }: RenameRowProps)
           }
         }}
         onBlur={() => onCommit(draft)}
-        // Inline 16px font-size on the input prevents iOS / touch-Safari from
-        // auto-zooming on focus (browsers zoom inputs with font-size < 16px).
-        // We then visually scale the rendered glyphs back to ~14px via the
-        // line-height + h-6 wrapper so it looks consistent with surrounding
-        // text-sm tree rows.
-        style={{ fontSize: '16px' }}
-        className="h-6 min-w-0 flex-1 rounded border border-input bg-background px-1.5 leading-tight text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+        className="h-7 min-w-0 flex-1 rounded border-0 bg-background/60 px-1 text-sm text-foreground outline-none focus:bg-background focus:ring-1 focus:ring-ring"
       />
     </div>
   );
