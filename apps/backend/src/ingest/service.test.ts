@@ -5,6 +5,8 @@ import { join } from 'node:path';
 import { resolveVaultPaths } from '../config/paths.js';
 import { openDb } from '../db/client.js';
 import { runMigrations } from '../db/migrate.js';
+import { FakeEmbedder } from '../embeddings/embedder.js';
+import { Indexer } from '../index/indexer.js';
 import { IndexRepo } from '../index/repo.js';
 import { IngestService } from './service.js';
 import type { Skill } from '../skills/parse.js';
@@ -41,17 +43,22 @@ let dir: string;
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'sanji-ingest-')); });
 afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
 
-function setup() {
+function setup(opts?: { withIndexer?: boolean }) {
   const paths = resolveVaultPaths(dir);
   mkdirSync(paths.sanjiDir, { recursive: true });
   const db = openDb(paths.indexDb);
   runMigrations(db);
   const repo = new IndexRepo(db);
   const adapter = new ScriptedAdapter();
+  const embedder = new FakeEmbedder();
+  const indexer = opts?.withIndexer
+    ? new Indexer(db, embedder, { chunkSizeTokens: 500, chunkOverlapTokens: 50 })
+    : undefined;
   const service = new IngestService({
     paths, repo, adapter, model: 'sonnet', ingestSkill,
+    ...(indexer ? { indexer } : {}),
   });
-  return { service, paths, db, adapter };
+  return { service, paths, db, adapter, repo, embedder, indexer };
 }
 
 describe('IngestService', () => {
@@ -135,6 +142,26 @@ describe('IngestService', () => {
     expect(existsSync(safeOriginal)).toBe(true);
     // ...and definitely not above the vault root.
     expect(existsSync(join(paths.vault, '../../../escape.md'))).toBe(false);
+    db.close();
+  });
+
+  it('chunks + embeds the freshly-written note when an indexer is wired', async () => {
+    // Without the post-write indexFile call, the inbox note shows up in the
+    // notes table (via upsertNote) but produces zero chunk rows, so semantic
+    // search returns nothing for the new content until a full re-index.
+    const { service, repo, embedder, db } = setup({ withIndexer: true });
+    const events: any[] = [];
+    for await (const ev of service.enqueue({
+      fileId: 'f1',
+      source: { kind: 'paste', title: 'demo', content: 'hello world' },
+      abortController: new AbortController(),
+    })) {
+      events.push(ev);
+    }
+    expect(events.at(-1)).toMatchObject({ kind: 'done' });
+    const queryVec = await embedder.embed('body content');
+    const hits = repo.knnChunks(queryVec, 5);
+    expect(hits.some((h) => h.notePath === 'inbox/demo.md')).toBe(true);
     db.close();
   });
 

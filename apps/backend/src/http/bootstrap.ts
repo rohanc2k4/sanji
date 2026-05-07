@@ -5,8 +5,10 @@ import { openDb } from '../db/client.js';
 import { runMigrations } from '../db/migrate.js';
 import { FakeEmbedder, type Embedder } from '../embeddings/embedder.js';
 import { TransformersEmbedder } from '../embeddings/transformers.js';
+import { Indexer } from '../index/indexer.js';
 import { IndexRepo } from '../index/repo.js';
 import { IngestService } from '../ingest/service.js';
+import { makeBlurbLlm } from '../retrieval/contextual-blurb-deps.js';
 import { makeAdapter } from '../llm/factory.js';
 import { loadSkills } from '../skills/loader.js';
 import { Registry } from '../tools/registry.js';
@@ -99,12 +101,26 @@ export async function bootstrapReadyDeps(vault: string): Promise<ReadyDeps> {
   // onboarding default). The thin-prompt skill body lets the strong model
   // decide the structure; no two-stage review pass — it was over-engineered
   // for the actual workflow.
+  // One Indexer instance is shared by:
+  //   - the indexing-status route (full-vault indexAll on first boot)
+  //   - the ingest service (single-file indexFile after writing an inbox note)
+  //   - the notes rename route (single-file indexFile after rename)
+  // so chunk + embedding rows land synchronously on every code path that
+  // produces or moves a note. Without this, semantic_search / hybrid_search
+  // miss freshly-ingested or freshly-renamed notes until the next full pass.
+  const indexer = new Indexer(db, embedder, {
+    chunkSizeTokens: cfg.indexing.chunk_size_tokens,
+    chunkOverlapTokens: cfg.indexing.chunk_overlap_tokens,
+    ...(cfg.ingestion.contextual_retrieval ? { blurbLlm: makeBlurbLlm(adapter) } : {}),
+  });
+
   const ingestService = new IngestService({
     paths,
     repo,
     adapter,
     model: cfg.models.default,
     ingestSkill,
+    indexer,
   });
 
   return {
@@ -118,6 +134,7 @@ export async function bootstrapReadyDeps(vault: string): Promise<ReadyDeps> {
     registry,
     skills,
     ingestService,
+    indexer,
   };
 }
 

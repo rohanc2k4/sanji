@@ -4,6 +4,7 @@ import { join, basename, extname } from 'node:path';
 import type { ProviderAdapter, IngestEvent, FileFormat, NoteFrontmatter } from '@sanji/shared';
 import type { Skill } from '../skills/parse.js';
 import type { VaultPaths } from '../config/paths.js';
+import type { Indexer } from '../index/indexer.js';
 import type { IndexRepo } from '../index/repo.js';
 import { detectFormat, extractByFormat } from './extractors/index.js';
 import { rewrite } from './rewrite.js';
@@ -17,6 +18,14 @@ export interface IngestServiceDeps {
   adapter: ProviderAdapter;
   model: string;
   ingestSkill: Skill;
+  /**
+   * Optional indexer. When provided, the service runs `indexer.indexFile`
+   * on the just-written inbox note so chunks + embeddings land synchronously
+   * — semantic_search / hybrid_search see the new content immediately
+   * instead of waiting for the next full-vault re-index. Tests that don't
+   * care about chunk indexing can omit this dep.
+   */
+  indexer?: Indexer;
 }
 
 export interface IngestJob {
@@ -286,14 +295,30 @@ export class IngestService {
       return;
     }
 
-    // Upsert into the notes index so the file appears in SourcesSidebar
-    // immediately. Chunk + embedding pass catches up via the watcher.
-    try {
-      const mtimeMs = statSync(targetAbs).mtimeMs;
-      const parsed = parseNote(target, composed, mtimeMs);
-      this.deps.repo.upsertNote(parsed.note);
-    } catch {
-      // Non-fatal: watcher will eventually pick the file up.
+    // When an indexer is wired in, prefer the full path: indexer.indexFile
+    // upserts the notes row AND chunks + embeddings, so semantic_search and
+    // hybrid_search see the new content immediately. When the indexer is
+    // absent (tests, degraded boots), fall back to a notes-row-only upsert
+    // so the SourcesSidebar listing still picks the file up; the chokidar
+    // watcher reconciles chunks asynchronously.
+    if (this.deps.indexer) {
+      try {
+        await this.deps.indexer.indexFile(this.deps.paths.vault, target);
+      } catch (err) {
+        process.stderr.write(
+          `post-ingest indexFile failed for ${target}: ${
+            err instanceof Error ? err.message : String(err)
+          }\n`,
+        );
+      }
+    } else {
+      try {
+        const mtimeMs = statSync(targetAbs).mtimeMs;
+        const parsed = parseNote(target, composed, mtimeMs);
+        this.deps.repo.upsertNote(parsed.note);
+      } catch {
+        // Non-fatal: watcher will eventually pick the file up.
+      }
     }
 
     this.invalidateContextCache();

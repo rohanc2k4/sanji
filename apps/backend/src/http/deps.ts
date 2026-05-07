@@ -1,6 +1,7 @@
 import type { ConfigDto, ProviderAdapter } from '@sanji/shared';
 import type Database from 'better-sqlite3';
 import type { Embedder } from '../embeddings/embedder.js';
+import type { Indexer } from '../index/indexer.js';
 import type { IndexRepo } from '../index/repo.js';
 import type { IngestService } from '../ingest/service.js';
 import type { Registry } from '../tools/registry.js';
@@ -20,4 +21,5 @@ export type ServerDeps =
       registry: Registry;
       skills: readonly Skill[];
       ingestService: IngestService;
+      indexer: Indexer;
     };
