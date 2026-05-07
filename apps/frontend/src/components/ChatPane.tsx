@@ -40,6 +40,7 @@ export function ChatPane({ turns, streaming, onFilesDropped }: ChatPaneProps) {
 
   return (
     <div
+      data-testid="chat-pane"
       className="relative flex flex-1 flex-col overflow-hidden"
       onDragEnter={onDragEnter}
       onDragLeave={onDragLeave}
