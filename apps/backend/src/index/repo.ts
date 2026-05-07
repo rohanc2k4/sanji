@@ -7,6 +7,7 @@ export interface ChunkUpsert {
   startChar: number;
   endChar: number;
   embedding: Float32Array;
+  headerTrail?: string[];
 }
 
 export interface ChunkHit {
@@ -17,6 +18,7 @@ export interface ChunkHit {
   startChar: number;
   endChar: number;
   distance: number;
+  headerTrail: string[];
 }
 
 export class IndexRepo {
@@ -99,13 +101,19 @@ export class IndexRepo {
       this.db.prepare('DELETE FROM chunks WHERE note_path = ?').run(notePath);
 
       const insertRow = this.db.prepare(
-        'INSERT INTO chunks (note_path, chunk_index, text, start_char, end_char) VALUES (?, ?, ?, ?, ?) RETURNING id',
+        'INSERT INTO chunks (note_path, chunk_index, text, start_char, end_char, header_trail) VALUES (?, ?, ?, ?, ?, ?) RETURNING id',
       );
       const insertVec = this.db.prepare('INSERT INTO chunks_vec (rowid, embedding) VALUES (?, ?)');
       for (const c of items) {
-        const { id } = insertRow.get(notePath, c.chunkIndex, c.text, c.startChar, c.endChar) as {
-          id: bigint;
-        };
+        const trailJson = c.headerTrail && c.headerTrail.length ? JSON.stringify(c.headerTrail) : null;
+        const { id } = insertRow.get(
+          notePath,
+          c.chunkIndex,
+          c.text,
+          c.startChar,
+          c.endChar,
+          trailJson,
+        ) as { id: bigint };
         insertVec.run(id, Buffer.from(c.embedding.buffer, c.embedding.byteOffset, c.embedding.byteLength));
       }
     });
@@ -131,11 +139,13 @@ export class IndexRepo {
       startChar: bigint;
       endChar: bigint;
       distance: number;
+      headerTrail: string | null;
     };
     const rows = this.db
       .prepare(
         `SELECT c.id, c.note_path AS notePath, c.chunk_index AS chunkIndex,
                 c.text, c.start_char AS startChar, c.end_char AS endChar,
+                c.header_trail AS headerTrail,
                 v.distance
          FROM chunks_vec v JOIN chunks c ON c.id = v.rowid
          WHERE v.embedding MATCH ? AND v.k = ?
@@ -150,6 +160,7 @@ export class IndexRepo {
       startChar: Number(r.startChar),
       endChar: Number(r.endChar),
       distance: r.distance,
+      headerTrail: r.headerTrail ? (JSON.parse(r.headerTrail) as string[]) : [],
     }));
   }
 

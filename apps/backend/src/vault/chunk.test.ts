@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chunkBody } from './chunk.js';
+import { chunkBody, formatChunkForEmbedding } from './chunk.js';
 
 const PARAGRAPH = 'lorem '.repeat(40).trim();
 
@@ -34,5 +34,63 @@ describe('chunkBody', () => {
 
   it('returns no chunks for an empty body', () => {
     expect(chunkBody('', { sizeTokens: 500, overlapTokens: 50 })).toEqual([]);
+  });
+});
+
+describe('chunkBody header trail', () => {
+  it('attaches the active header trail to each chunk', () => {
+    const body = [
+      '# Top',
+      '',
+      'top body.',
+      '',
+      '## Sub',
+      '',
+      'sub body.',
+      '',
+      '### Deep',
+      '',
+      'deep body.',
+    ].join('\n');
+    const chunks = chunkBody(body, { sizeTokens: 50, overlapTokens: 0 });
+    const trails = chunks.map((c) => c.headerTrail);
+    expect(trails[0]).toEqual(['Top']);
+    expect(trails.find((t) => t.includes('Sub'))).toEqual(['Top', 'Sub']);
+    expect(trails.find((t) => t.includes('Deep'))).toEqual(['Top', 'Sub', 'Deep']);
+  });
+
+  it('truncates the trail when a sibling or ancestor heading appears', () => {
+    const body = [
+      '# A',
+      'a body.',
+      '## A1',
+      'a1 body.',
+      '## A2',
+      'a2 body.',
+    ].join('\n');
+    const chunks = chunkBody(body, { sizeTokens: 50, overlapTokens: 0 });
+    const a2 = chunks.find((c) => c.text.includes('a2 body'));
+    expect(a2?.headerTrail).toEqual(['A', 'A2']);
+  });
+});
+
+describe('formatChunkForEmbedding', () => {
+  it('prepends doc title and trail above the chunk body', () => {
+    const formatted = formatChunkForEmbedding(
+      { text: 'body', headerTrail: ['Top', 'Sub'], chunkIndex: 0, startChar: 0, endChar: 4 } as any,
+      { title: 'Doc Title' } as any,
+    );
+    expect(formatted).toContain('# Doc Title');
+    expect(formatted).toContain('## Top');
+    expect(formatted).toContain('### Sub');
+    expect(formatted).toContain('body');
+  });
+
+  it('handles missing doc title gracefully', () => {
+    const formatted = formatChunkForEmbedding(
+      { text: 'body', headerTrail: [], chunkIndex: 0, startChar: 0, endChar: 4 } as any,
+      { title: null } as any,
+    );
+    expect(formatted).toContain('body');
   });
 });

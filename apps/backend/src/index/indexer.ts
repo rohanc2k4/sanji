@@ -3,7 +3,7 @@ import { readdirSync } from 'node:fs';
 import { extname, join, relative } from 'node:path';
 import type { Db } from '../db/client.js';
 import type { Embedder } from '../embeddings/embedder.js';
-import { chunkBody } from '../vault/chunk.js';
+import { chunkBody, formatChunkForEmbedding } from '../vault/chunk.js';
 import { parseNote } from '../vault/parse.js';
 import { IndexRepo } from './repo.js';
 
@@ -80,7 +80,8 @@ export class Indexer {
         text: c.text,
         startChar: c.startChar,
         endChar: c.endChar,
-        embedding: await this.embedder.embed(c.text),
+        headerTrail: c.headerTrail,
+        embedding: await this.embedder.embed(formatChunkForEmbedding(c, { title: note.title })),
       })),
     );
     this.repo.replaceChunksForNote(relPath, upserts);

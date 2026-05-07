@@ -108,6 +108,25 @@ describe('IndexRepo — chunks', () => {
     expect(hits[0]?.text).toBe('alpha');
   });
 
+  it('round-trips header_trail through replace + knnChunks', async () => {
+    const { repo, embedder } = setup();
+    repo.upsertNote({ path: 'a.md', mtimeMs: 1, body: 'b', frontmatter: null, title: null });
+    const v1 = await embedder.embed('alpha');
+    repo.replaceChunksForNote('a.md', [
+      {
+        chunkIndex: 0,
+        text: 'alpha',
+        startChar: 0,
+        endChar: 5,
+        embedding: v1,
+        headerTrail: ['A', 'B'],
+      },
+    ]);
+    const target = await embedder.embed('alpha');
+    const hits = repo.knnChunks(target, 1);
+    expect(hits[0]?.headerTrail).toEqual(['A', 'B']);
+  });
+
   it('cascades delete from chunks → chunks_vec', async () => {
     const { db, repo, embedder } = setup();
     repo.upsertNote({ path: 'a.md', mtimeMs: 1, body: 'b', frontmatter: null, title: null });
