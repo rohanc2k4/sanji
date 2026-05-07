@@ -13,10 +13,9 @@ export interface IngestStatusPanelProps {
 
 const PROGRESS_BY_PHASE: Record<StatusPhase, number> = {
   queued: 5,
-  extracting: 20,
-  rewriting: 50,
-  reviewing: 80,
-  writing: 95,
+  extracting: 25,
+  rewriting: 60,
+  writing: 90,
   done: 100,
   skipped: 100,
   error: 100,
@@ -93,17 +92,16 @@ export function IngestStatusPanel({
                 <X />
               </Button>
             </div>
-            {/* Both LLM phases (rewriting via Haiku, reviewing via Sonnet)
-                are black-box calls with no real streaming progress signal,
-                so a determinate bar would lie. Indeterminate animated bar
-                during those; determinate during the short extract / write
-                phases. */}
-            {isActive && (r.phase === 'rewriting' || r.phase === 'reviewing') && (
+            {/* The LLM call (rewriting) is a black-box with no real progress
+                signal, so a determinate bar would lie. Indeterminate animated
+                bar during rewriting; determinate during the short extract /
+                write phases. */}
+            {isActive && r.phase === 'rewriting' && (
               <div className="relative mt-1.5 h-1 w-full overflow-hidden rounded-full bg-muted">
                 <div className="absolute h-full w-1/3 rounded-full bg-primary animate-progress-indeterminate" />
               </div>
             )}
-            {isActive && r.phase !== 'rewriting' && r.phase !== 'reviewing' && (
+            {isActive && r.phase !== 'rewriting' && (
               <Progress value={PROGRESS_BY_PHASE[r.phase]} className="mt-1.5 h-1" />
             )}
             {r.phase === 'done' && r.outputPath && (

@@ -1,84 +1,33 @@
 import { parse as parseYaml } from 'yaml';
-import type { FileFormat, NoteFrontmatter, ProviderAdapter } from '@sanji/shared';
+import type { ContentType, FileFormat, NoteFrontmatter, ProviderAdapter } from '@sanji/shared';
 import type { Skill } from '../skills/parse.js';
 import { runSkillWithUsage } from '../skills/runSkill.js';
 import type { ExtractResult } from './extractors/types.js';
 import type { VaultContext } from './context.js';
 
-const REVIEW_SYSTEM = `# Sanji ingest review
+// Only `title` and `summary` are required from the model. The backend fills
+// `source` and `ingested_on` post-hoc, and `content_type` is now optional —
+// the thin-prompt ingest skill lets the model decide whether bucketing makes
+// sense for the source. Listed here as a const so the parser + tests stay
+// in sync.
+export const REQUIRED_FIELDS = ['title', 'summary'] as const;
 
-You are reviewing a rewritten markdown note against its source for quality. The user message contains the original extracted source text and a draft note (frontmatter + body) produced by an earlier rewrite pass. Your job is to verify the draft is faithful and well-structured, returning either the draft unchanged or a corrected version.
-
-Check the draft against the source on these axes:
-
-1. Frontmatter
-   - title: descriptive, reflects the source's actual subject (not the filename).
-   - content_type: best fit from {paper, slides, transcript, article, assignment, code, other}. If the draft picked the wrong category, fix it.
-   - summary: faithful (claims trace back to the source), single line, 20-200 chars. Tighten if too long; expand if too sparse.
-   - tags (optional): source-derived, not generic. Drop generic ones; add specific ones if obvious.
-
-2. Body
-   - All major themes from the source are covered, in roughly the order the source presents them.
-   - No hallucinated content: every claim should be supported by the source text.
-   - Wikilinks: only keep \`[[target]]\` references the draft already wrote; do NOT invent new ones.
-   - Section headings are descriptive and follow the source's structure.
-
-3. Output
-   - If the draft is good, return it byte-for-byte unchanged.
-   - If issues, return a corrected version of the entire note.
-   - Do NOT include any explanation, commentary, prose framing, or markdown fences. Output only the note itself, beginning with the opening \`---\` of the frontmatter.
-
-Output format is identical to the rewrite skill: \`---\` opening, frontmatter YAML, \`---\` closing, blank line, body markdown.`;
-
-const REVIEW_SKILL: Skill = {
-  source: '<inline>',
-  name: 'ingest-review',
-  description: 'Sonnet review pass over Haiku rewrite output for ingestion.',
-  trigger: '',
-  body: REVIEW_SYSTEM,
-};
-
-export const REQUIRED_FIELDS = [
-  'title',
-  'source',
-  'ingested_on',
-  'content_type',
-  'summary',
-] as const;
+export interface ParsedFrontmatter {
+  title: string;
+  summary: string;
+  content_type?: ContentType;
+  tags?: string[];
+}
 
 export interface ParsedRewrite {
-  frontmatter: NoteFrontmatter;
+  frontmatter: ParsedFrontmatter;
   body: string;
 }
 
-/**
- * Strip three kinds of LLM output noise that wrap an otherwise-valid note:
- *   1. Leading prose before the first `---` delimiter line ("Here is the
- *      structured note:\n\n---\n...").
- *   2. A whole-document code fence wrapper (```markdown ... ``` or ``` ... ```).
- *   3. Trailing prose after the body that's outside any obvious structure.
- *
- * Returns the raw string trimmed to start at the first `---` delimiter line
- * (if any) so the existing regex parser succeeds. If no delimiter line is
- * found, returns the original string and the parser will throw with the
- * meaningful "missing YAML frontmatter delimiters" error.
- */
-function stripWrappers(raw: string): string {
-  let s = raw.trim();
-  // Code-fence wrapper: ```markdown\n...\n``` or just ```\n...\n```.
-  const fence = s.match(/^```(?:\w+)?\s*\n([\s\S]*?)\n```\s*$/);
-  if (fence) s = fence[1]!.trim();
-  // Leading prose: skip lines until we hit `^---\s*$` (a delimiter line by itself).
-  const lines = s.split('\n');
-  const firstDelim = lines.findIndex((line) => /^---\s*$/.test(line));
-  if (firstDelim > 0) s = lines.slice(firstDelim).join('\n');
-  return s;
-}
-
 export function parseRewriteOutput(raw: string): ParsedRewrite {
-  // Haiku (and even Sonnet on a bad day) sometimes wraps the note in a
-  // code fence or prefixes it with explanatory prose like "Here is the
-  // structured note:". Tolerate both before insisting on the delimiter.
+  // Models sometimes wrap the note in a code fence or prefix it with prose
+  // like "Here is the structured note:". Tolerate both before insisting on
+  // the delimiter.
   const stripped = stripWrappers(raw);
   const m = stripped.match(/^---\s*\n([\s\S]*?)\n---\s*\n?([\s\S]*)$/);
   if (!m) {
@@ -106,20 +55,37 @@ export function parseRewriteOutput(raw: string): ParsedRewrite {
     }
   }
 
-  const frontmatter: NoteFrontmatter = {
+  const frontmatter: ParsedFrontmatter = {
     title: fm.title as string,
-    source: fm.source as string,
-    ingested_on: fm.ingested_on as string,
-    content_type: fm.content_type as NoteFrontmatter['content_type'],
     summary: fm.summary as string,
   };
-  if (Array.isArray(fm.tags)) frontmatter.tags = fm.tags as string[];
-  if (typeof fm.original_format === 'string') {
-    frontmatter.original_format = fm.original_format as NoteFrontmatter['original_format'];
+  if (typeof fm.content_type === 'string') {
+    frontmatter.content_type = fm.content_type as ContentType;
   }
-  if (typeof fm.pages === 'number') frontmatter.pages = fm.pages;
+  if (Array.isArray(fm.tags)) frontmatter.tags = fm.tags as string[];
 
   return { frontmatter, body };
+}
+
+/**
+ * Strip two kinds of LLM output noise that wrap an otherwise-valid note:
+ *   1. A whole-document code fence wrapper (```markdown ... ``` or ``` ... ```).
+ *   2. Leading prose before the first `---` delimiter line ("Here is the
+ *      structured note:\n\n---\n...").
+ *
+ * Returns the raw string trimmed to start at the first `---` delimiter line
+ * (if any) so the strict regex parser succeeds. If no delimiter line is
+ * found, returns the original string and the parser throws with the
+ * meaningful "missing YAML frontmatter delimiters" error.
+ */
+function stripWrappers(raw: string): string {
+  let s = raw.trim();
+  const fence = s.match(/^```(?:\w+)?\s*\n([\s\S]*?)\n```\s*$/);
+  if (fence) s = fence[1]!.trim();
+  const lines = s.split('\n');
+  const firstDelim = lines.findIndex((line) => /^---\s*$/.test(line));
+  if (firstDelim > 0) s = lines.slice(firstDelim).join('\n');
+  return s;
 }
 
 export interface RewriteInput {
@@ -137,7 +103,7 @@ export interface RewriteDeps {
 }
 
 export interface RewriteResult {
-  frontmatter: NoteFrontmatter;
+  frontmatter: ParsedFrontmatter;
   body: string;
   raw: string;
   tokensUsed?: { input: number; output: number };
@@ -164,15 +130,11 @@ function buildPrompt(input: RewriteInput): string {
   ].join('\n');
 }
 
-const STRICT_RETRY_REMINDER = `Your previous response could not be parsed. Reply with the note ONLY. The first three characters of your reply MUST be \`---\\n\`. Do NOT wrap the response in code fences. Do NOT prefix with "Here is" or any other prose. Concrete shape:
+const STRICT_RETRY_REMINDER = `Your previous response could not be parsed. Reply with the note ONLY. The first three characters of your reply MUST be \`---\\n\`. Do NOT wrap in code fences. Do NOT prefix with "Here is" or any other prose. Concrete shape:
 
 ---
-title: <string>
-source: <string>
-ingested_on: <YYYY-MM-DD>
-content_type: paper | slides | transcript | article | assignment | code | other
+title: <descriptive string>
 summary: <single line, max 200 chars>
-tags: [optional]
 ---
 
 <one-paragraph summary>
@@ -181,13 +143,14 @@ tags: [optional]
 
 <body content>
 
-End with the body. Do not add commentary after.`;
+End with the body. No commentary after.`;
 
 /**
  * Run the bundled ingest skill against the extracted text + vault context.
  * Parses the LLM output as YAML frontmatter + markdown body. Retries once on
- * parse failure with a stricter schema reminder. On second-attempt failure,
- * throws an error preserving the raw output.
+ * parse failure with a stricter format reminder. On second-attempt failure,
+ * throws an error that preserves the raw output via a `rawOutput` property
+ * so the caller can log it for debugging.
  */
 export async function rewrite(
   input: RewriteInput,
@@ -238,89 +201,9 @@ export async function rewrite(
   }
 }
 
-export interface ReviewInput {
-  extracted: ExtractResult;
-  draft: RewriteResult;
-  abortSignal?: AbortSignal;
-}
-
-export interface ReviewDeps {
-  adapter: ProviderAdapter;
-  model: string;
-}
-
-/**
- * Sonnet (or whatever the configured review model is) crosschecks the Haiku
- * rewrite for faithfulness, content_type accuracy, summary quality, and
- * absence of hallucinations. Returns a possibly-corrected RewriteResult, OR
- * `null` if the review pass failed to produce parseable output. The caller
- * (IngestService) falls back to the original draft on null so review failures
- * never break ingestion — review is a quality gate, not a correctness gate.
- *
- * Uses the same parse + retry-once-on-fail pattern as `rewrite()`.
- */
-export async function review(
-  input: ReviewInput,
-  deps: ReviewDeps,
-): Promise<RewriteResult | null> {
-  const userPrompt = [
-    'SOURCE TEXT (original extraction):',
-    '<<<',
-    input.extracted.text,
-    '>>>',
-    '',
-    'DRAFT NOTE (under review):',
-    '<<<',
-    input.draft.raw,
-    '>>>',
-    '',
-    'Return either the unchanged draft or a corrected version. No commentary.',
-  ].join('\n');
-
-  let first: { text: string; usage?: { input: number; output: number } };
-  try {
-    first = await runSkillWithUsage({
-      skill: REVIEW_SKILL,
-      input: userPrompt,
-      adapter: deps.adapter,
-      model: deps.model,
-      abortSignal: input.abortSignal,
-    });
-  } catch {
-    return null;
-  }
-
-  try {
-    const parsed = parseRewriteOutput(first.text);
-    return {
-      frontmatter: parsed.frontmatter,
-      body: parsed.body,
-      raw: first.text,
-      tokensUsed: first.usage,
-    };
-  } catch {
-    let second: { text: string; usage?: { input: number; output: number } };
-    try {
-      second = await runSkillWithUsage({
-        skill: REVIEW_SKILL,
-        input: `${userPrompt}\n\n${STRICT_RETRY_REMINDER}`,
-        adapter: deps.adapter,
-        model: deps.model,
-        abortSignal: input.abortSignal,
-      });
-    } catch {
-      return null;
-    }
-    try {
-      const parsed = parseRewriteOutput(second.text);
-      return {
-        frontmatter: parsed.frontmatter,
-        body: parsed.body,
-        raw: second.text,
-        tokensUsed: second.usage,
-      };
-    } catch {
-      return null;
-    }
-  }
-}
+// Re-export `NoteFrontmatter` so existing imports (e.g. ingest service
+// composing the final composed file) keep working without churn. The
+// composed final frontmatter overlays the model's parsed fields with
+// backend-set fields (`source`, `ingested_on`, `original_format`, `pages`)
+// to produce a full `NoteFrontmatter`.
+export type { NoteFrontmatter };

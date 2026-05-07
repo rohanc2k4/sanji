@@ -13,20 +13,19 @@ export interface NoteFrontmatter {
   title: string;
   source: string; // .sanji/originals/<basename> or "paste"
   ingested_on: string; // YYYY-MM-DD
-  content_type: ContentType;
   summary: string;
+  content_type?: ContentType;
   tags?: string[];
   original_format?: FileFormat;
   pages?: number;
 }
 
-export type IngestEventPhase = 'extract' | 'rewrite' | 'review' | 'write';
+export type IngestEventPhase = 'extract' | 'rewrite' | 'write';
 
 export type IngestEvent =
   | { kind: 'queued'; fileId: string; sourceName: string }
   | { kind: 'extracting'; fileId: string; sourceName: string }
   | { kind: 'rewriting'; fileId: string; sourceName: string; tokensInput?: number }
-  | { kind: 'reviewing'; fileId: string; sourceName: string }
   | { kind: 'writing'; fileId: string; sourceName: string }
   | {
       kind: 'done';

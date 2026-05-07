@@ -18,7 +18,8 @@ describe('ingest types', () => {
       original_format: 'pdf',
       pages: 12,
     };
-    expect(fm.content_type satisfies ContentType).toBeTruthy();
+    const ct: ContentType | undefined = fm.content_type;
+    expect(ct).toBe('paper');
     expect(fm.original_format).toBe('pdf');
   });
 
@@ -31,6 +32,16 @@ describe('ingest types', () => {
       summary: 'Did not fit any branch.',
     };
     expect(fm.content_type).toBe('other');
+  });
+
+  it('NoteFrontmatter accepts a minimal shape with content_type omitted', () => {
+    const fm: NoteFrontmatter = {
+      title: 'Loose note',
+      source: 'paste',
+      ingested_on: '2026-05-06',
+      summary: 'No bucket assigned by the model.',
+    };
+    expect(fm.content_type).toBeUndefined();
   });
 
   it('IngestEvent variants discriminate on kind', () => {
