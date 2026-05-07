@@ -7,7 +7,7 @@ describe('rrfFuse', () => {
     const b = ['z', 'x']; // ranks 1, 2
     const fused = rrfFuse([a, b], { k: 60 });
     expect(fused.map((r) => r.id)).toEqual(['x', 'z', 'y']);
-    expect(fused[0].score).toBeCloseTo(1 / 61 + 1 / 62, 5);
+    expect(fused[0]!.score).toBeCloseTo(1 / 61 + 1 / 62, 5);
   });
 
   it('handles empty input lists', () => {
@@ -24,6 +24,6 @@ describe('rrfFuse', () => {
     const a = ['both', 'onlyA'];
     const b = ['both', 'onlyB'];
     const fused = rrfFuse([a, b], { k: 60 });
-    expect(fused[0].id).toBe('both');
+    expect(fused[0]!.id).toBe('both');
   });
 });
