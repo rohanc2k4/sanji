@@ -1,13 +1,57 @@
 import { Hono } from 'hono';
-import { readFile, mkdir, rename as fsRename } from 'node:fs/promises';
+import { readFile, mkdir, rename as fsRename, writeFile } from 'node:fs/promises';
 import { existsSync, statSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { basename, dirname, extname, join } from 'node:path';
 import { parseNote } from '../../vault/parse.js';
 import { writeNoteTool } from '../../tools/write-note.js';
 import { validateVaultRelativePath } from '../../tools/validation.js';
 import type { VaultPaths } from '../../config/paths.js';
 import type { ToolContext } from '../../tools/types.js';
 import type { IndexRepo } from '../../index/repo.js';
+
+/**
+ * Rewrite the in-file identity of a note to match its new filename.
+ *
+ * - If the file has YAML frontmatter with a `title:` field, replace its value
+ *   with `newTitle` (preserving the rest of the block as-is).
+ * - If the body's first non-blank line is an H1, replace its text with
+ *   `newTitle`.
+ *
+ * Returns the rewritten source. Idempotent when the title already matches.
+ */
+export function syncTitleToFilename(source: string, newTitle: string): string {
+  let out = source;
+
+  const fmMatch = out.match(/^(---\s*\n)([\s\S]*?)(\n---\s*\n?)/);
+  if (fmMatch) {
+    const head = fmMatch[1]!;
+    const block = fmMatch[2]!;
+    const tail = fmMatch[3]!;
+    const titleLineRe = /^title:[ \t]*.*$/m;
+    let newBlock = block;
+    if (titleLineRe.test(block)) {
+      const safe = /[:#\n]/.test(newTitle) ? JSON.stringify(newTitle) : newTitle;
+      newBlock = block.replace(titleLineRe, `title: ${safe}`);
+    }
+    out = head + newBlock + tail + out.slice(fmMatch[0].length);
+  }
+
+  // Replace the first H1 in the body (after frontmatter).
+  const fmEnd = fmMatch ? fmMatch[0].length : 0;
+  const head = out.slice(0, fmEnd);
+  const rest = out.slice(fmEnd);
+  const h1Re = /^#\s+.+$/m;
+  const h1Match = rest.match(h1Re);
+  if (h1Match) {
+    out = head + rest.replace(h1Re, `# ${newTitle}`);
+  }
+
+  return out;
+}
+
+function titleFromFilename(relPath: string): string {
+  return basename(relPath, extname(relPath));
+}
 
 export function notesRoute(deps: { paths: VaultPaths; repo?: IndexRepo }) {
   const r = new Hono();
@@ -95,6 +139,24 @@ export function notesRoute(deps: { paths: VaultPaths; repo?: IndexRepo }) {
     } catch (err) {
       return c.json({ kind: 'api-error', code: 'RENAME_FAILED', message: (err as Error).message }, 500);
     }
+
+    // Sync the in-file identity (frontmatter title + first H1) to the new
+    // filename so renaming acts on the conceptual note, not just the path.
+    // Only applies to .md files; other extensions pass through untouched.
+    if (toValid.toLowerCase().endsWith('.md')) {
+      try {
+        const source = await readFile(toAbs, 'utf8');
+        const newTitle = titleFromFilename(toValid);
+        const updated = syncTitleToFilename(source, newTitle);
+        if (updated !== source) {
+          await writeFile(toAbs, updated, 'utf8');
+        }
+      } catch {
+        // Non-fatal — leave the body as-is and let the index pick up whatever
+        // title it can parse.
+      }
+    }
+
     if (deps.repo) {
       try {
         deps.repo.deleteNote(fromValid);
