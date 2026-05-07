@@ -14,6 +14,13 @@ export type Turn =
       deltas: string[];
       toolCalls: AssistantToolCall[];
       errors: string[];
+      /**
+       * Latest tool_call_start summary, e.g. "Searching for 'logistic
+       * regression'". Cleared on the matching tool_call_end so the activity
+       * line doesn't keep stale text after a tool finishes; the next
+       * tool_call_start replaces it. Undefined when no tool is in flight.
+       */
+      currentActivity?: string;
     };
 
 export function makeAssistantTurn(): Turn {
@@ -51,6 +58,18 @@ export function applyEvent(turns: Turn[], event: ChatEvent): Turn[] {
     }
     case 'error': {
       const next = { ...last, errors: [...last.errors, event.message] };
+      return [...turns.slice(0, lastIdx), next];
+    }
+    case 'tool_call_start': {
+      const next = { ...last, currentActivity: event.args_summary };
+      return [...turns.slice(0, lastIdx), next];
+    }
+    case 'tool_call_end': {
+      // Drop the activity label when the tool finishes; if the model fires
+      // another tool right after, its tool_call_start re-populates the
+      // field. The frontend renders "Writing answer …" as soon as text
+      // deltas start flowing, so a brief gap with no activity reads fine.
+      const next = { ...last, currentActivity: undefined };
       return [...turns.slice(0, lastIdx), next];
     }
     case 'tool_use_start':

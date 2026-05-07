@@ -6,10 +6,11 @@ import type { Turn } from './applyEvent';
 export interface ChatPaneProps {
   turns: Turn[];
   streaming: boolean;
+  elapsedSec?: number;
   onFilesDropped: (files: File[]) => void;
 }
 
-export function ChatPane({ turns, streaming, onFilesDropped }: ChatPaneProps) {
+export function ChatPane({ turns, streaming, elapsedSec, onFilesDropped }: ChatPaneProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const dragDepth = useRef(0);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -57,6 +58,11 @@ export function ChatPane({ turns, streaming, onFilesDropped }: ChatPaneProps) {
                 key={i}
                 turn={turn}
                 streaming={streaming && i === turns.length - 1 && turn.role === 'assistant'}
+                elapsedSec={
+                  streaming && i === turns.length - 1 && turn.role === 'assistant'
+                    ? elapsedSec
+                    : undefined
+                }
               />
             ))}
             <div ref={bottomRef} />

@@ -6,6 +6,42 @@ import type { Turn } from './applyEvent';
 export interface ChatMessageProps {
   turn: Turn;
   streaming?: boolean;
+  /**
+   * Wall-clock elapsed seconds since the user pressed send, threaded down
+   * from useChat. Only set on the streaming assistant turn (others get
+   * undefined). Rendered alongside the activity label as "· <n>s".
+   */
+  elapsedSec?: number;
+}
+
+/** Tiny circular spinner. Tailwind animate-spin on an SVG ring. Used in
+ * place of the previous bouncing-dots indicator. Single component so the
+ * activity status line and any future "thinking" surfaces share one
+ * visual. */
+function Spinner({ className = '' }: { className?: string }) {
+  return (
+    <svg
+      className={`size-3 animate-spin text-muted-foreground/70 ${className}`}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <circle
+        cx="12"
+        cy="12"
+        r="10"
+        stroke="currentColor"
+        strokeOpacity="0.25"
+        strokeWidth="3"
+      />
+      <path
+        d="M22 12a10 10 0 0 1-10 10"
+        stroke="currentColor"
+        strokeWidth="3"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
 }
 
 // Gemini-style word reveal: rather than appending characters as SSE chunks
@@ -116,7 +152,7 @@ function renderRevealed(fullText: string, revealedWordCount: number): ReactNode[
   return output;
 }
 
-export function ChatMessage({ turn, streaming }: ChatMessageProps) {
+export function ChatMessage({ turn, streaming, elapsedSec }: ChatMessageProps) {
   if (turn.role === 'user') {
     return (
       <div className="flex justify-end">
@@ -140,30 +176,45 @@ export function ChatMessage({ turn, streaming }: ChatMessageProps) {
   const showMarkdown =
     streaming !== true && revealedCount >= totalWords && fullText.length > 0;
 
-  // The pending "..." dots indicator is gated on `streaming === true` so it
-  // can never persist after the SSE stream closes. If a turn ends with no
-  // text deltas (e.g. assistant only made tool calls, or the stream was
-  // aborted, or the backend errored before any text arrived), the
-  // not-streaming branch renders nothing for the body and only any errors
-  // surface below. Without this gate, a dots indicator that mounted on a
-  // turn with no deltas would stay visible forever (revealedCount === 0,
-  // total === 0 → previous code path always rendered the dots).
-  const showPendingDots = streaming === true && revealedCount === 0;
+  // The activity status line replaces the previous bouncing-dots indicator.
+  // It surfaces whenever the assistant is streaming, regardless of whether
+  // text has started revealing. Three phases:
+  //   1. tool call in flight  → currentActivity from tool_call_start
+  //   2. text deltas flowing → "Writing answer · <n> tokens"
+  //   3. nothing yet         → "Thinking"
+  // The line disappears once streaming flips false (success or error).
+  const showActivity = streaming === true;
+  // Rough token estimate: ~4 chars/token, the standard heuristic for
+  // English text. Good enough for a status counter; we deliberately don't
+  // count actual SSE deltas because chunk size is provider-dependent.
+  const writingTokens = Math.max(1, Math.round(fullText.length / 4));
+  const activityLabel = (() => {
+    if (turn.role !== 'assistant') return null;
+    if (turn.currentActivity) return turn.currentActivity;
+    if (fullText.length > 0) return `Writing answer · ${writingTokens} tokens`;
+    return 'Thinking';
+  })();
+  const elapsedSuffix =
+    typeof elapsedSec === 'number' ? ` · ${elapsedSec}s` : '';
   const hasBody = fullText.length > 0;
 
   return (
     <div className="flex flex-col gap-2">
+      {showActivity && (
+        <div
+          className="flex max-w-[68ch] items-center gap-2 text-sm text-muted-foreground"
+          data-testid="chat-activity-status"
+        >
+          <Spinner />
+          <span className="truncate">
+            {activityLabel}
+            {elapsedSuffix}
+          </span>
+        </div>
+      )}
       {showMarkdown ? (
         <div className="chat-markdown max-w-[68ch]">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>{fullText}</ReactMarkdown>
-        </div>
-      ) : showPendingDots ? (
-        <div className="max-w-[68ch] whitespace-pre-wrap text-sm leading-relaxed text-foreground">
-          <span className="inline-flex items-center gap-1 text-muted-foreground/60">
-            <span className="size-1.5 animate-pulse rounded-full bg-muted-foreground/50" />
-            <span className="size-1.5 animate-pulse rounded-full bg-muted-foreground/50 [animation-delay:120ms]" />
-            <span className="size-1.5 animate-pulse rounded-full bg-muted-foreground/50 [animation-delay:240ms]" />
-          </span>
         </div>
       ) : hasBody ? (
         <div className="max-w-[68ch] whitespace-pre-wrap text-sm leading-relaxed text-foreground">

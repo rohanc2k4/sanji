@@ -83,7 +83,12 @@ export function ChatShell({
         </aside>
 
         <main className="relative flex flex-1 flex-col bg-background">
-          <ChatPane turns={chat.turns} streaming={chat.streaming} onFilesDropped={onFilesDropped} />
+          <ChatPane
+            turns={chat.turns}
+            streaming={chat.streaming}
+            elapsedSec={chat.elapsedSec}
+            onFilesDropped={onFilesDropped}
+          />
           <Composer
             model={selectedModel}
             onSubmit={chat.send}
