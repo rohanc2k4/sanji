@@ -5,6 +5,7 @@ import { ChatPane } from './ChatPane';
 import { Composer } from './Composer';
 import { EditorPanel } from './EditorPanel';
 import { SourcesSidebar } from './SourcesSidebar';
+import { ModelPicker } from '@/chat/ModelPicker';
 import { useChat } from '@/hooks/useChat';
 
 export interface ChatShellProps {
@@ -31,6 +32,10 @@ export function ChatShell({
   const editorOpen = editorPath !== null;
   const chat = useChat();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  // Sticky per chat-shell-instance. If a future "new conversation" reset
+  // tears down ChatShell, the picker resets with it. Default matches the
+  // hard-coded modelDefault from initialOnboardingState.
+  const [selectedModel, setSelectedModel] = useState('claude-sonnet-4-6');
 
   return (
     <div className="flex h-screen w-screen flex-col bg-background font-sans text-foreground">
@@ -50,6 +55,7 @@ export function ChatShell({
           <span>localhost vault</span>
         </div>
         <div className="flex items-center gap-3 text-muted-foreground/60">
+          <ModelPicker value={selectedModel} onChange={setSelectedModel} />
           <span className="font-mono">⌘K</span>
         </div>
       </header>
@@ -79,6 +85,7 @@ export function ChatShell({
         <main className="relative flex flex-1 flex-col bg-background">
           <ChatPane turns={chat.turns} streaming={chat.streaming} onFilesDropped={onFilesDropped} />
           <Composer
+            model={selectedModel}
             onSubmit={chat.send}
             onAbort={chat.abort}
             streaming={chat.streaming}

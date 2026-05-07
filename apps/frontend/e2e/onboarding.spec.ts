@@ -48,11 +48,9 @@ async function walkOnboardingThroughIndexing(page: import('@playwright/test').Pa
   await expect(page.getByText(/credentials look good/i)).toBeVisible({ timeout: 30_000 });
   await page.getByRole('button', { name: /^continue$/i }).click();
 
-  // ---- Model step (recommended preselected) ----
-  await expect(page.getByRole('heading', { name: /default model/i })).toBeVisible();
-  await page.getByRole('button', { name: /^continue$/i }).click();
-
-  // (Calendar + Tavily steps removed 2026-05-06 — deferred to v0.3.)
+  // (Model step removed 2026-05-07 — picker now lives in the chat header,
+  // sticky per conversation. Calendar + Tavily steps removed 2026-05-06 —
+  // deferred to v0.3.)
 
   // ---- Indexing step ----
   // Clicking "Start indexing" fires initOnboarding which writes the config

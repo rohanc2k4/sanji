@@ -40,9 +40,6 @@ async function walkOnboardingThroughIndexing(page: import('@playwright/test').Pa
   await expect(page.getByText(/credentials look good/i)).toBeVisible({ timeout: 30_000 });
   await page.getByRole('button', { name: /^continue$/i }).click();
 
-  await expect(page.getByRole('heading', { name: /default model/i })).toBeVisible();
-  await page.getByRole('button', { name: /^continue$/i }).click();
-
   await expect(page.getByRole('heading', { name: /indexing your notes/i })).toBeVisible();
   await page.getByRole('button', { name: /start indexing/i }).click();
   await expect(page.getByText(/indexed 1 note/i)).toBeVisible({ timeout: 30_000 });

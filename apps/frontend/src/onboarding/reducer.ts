@@ -2,13 +2,16 @@ import type { ConfigDto, ProviderTestResult, VaultValidateResult } from '@sanji/
 
 // Calendar + tavily steps are scoped for v0.3 (planning rituals: /daily,
 // /research, web_search). v0.1 onboarding ships with just the study-buddy
-// path: vault → provider → model → indexing → done. The backend config
-// schema keeps `calendar` and `search` entries with empty defaults so v0.3
-// can re-add the steps without backend churn.
+// path: vault → provider → indexing → done. The model step was removed
+// 2026-05-07: the chat header now exposes a per-conversation model picker,
+// so onboarding no longer asks the user to pick one upfront. modelDefault
+// and modelHeavy still carry their hard-coded defaults into the saved
+// config so the backend has both rungs of the ladder available. The
+// backend config schema also keeps `calendar` and `search` entries with
+// empty defaults so v0.3 can re-add the steps without backend churn.
 export type OnboardingStep =
   | 'vault'
   | 'provider'
-  | 'model'
   | 'indexing'
   | 'done';
 
@@ -48,13 +51,12 @@ export type OnboardingAction =
       anthropicApiKey?: string;
       testResult: ProviderTestResult;
     }
-  | { type: 'set-model'; defaultModel: string; heavyModel: string }
   | { type: 'index-progress'; done: number; total: number }
   | { type: 'next' }
   | { type: 'back' }
   | { type: 'set-error'; message: string | null };
 
-const ORDER: OnboardingStep[] = ['vault', 'provider', 'model', 'indexing', 'done'];
+export const ORDER: OnboardingStep[] = ['vault', 'provider', 'indexing', 'done'];
 
 function canAdvance(state: OnboardingState): boolean {
   switch (state.step) {
@@ -62,8 +64,6 @@ function canAdvance(state: OnboardingState): boolean {
       return state.vaultValidation?.ok === true;
     case 'provider':
       return state.providerTestResult?.ok === true;
-    case 'model':
-      return state.modelDefault !== '';
     case 'indexing':
       return state.totalNotes > 0 && state.indexedNotes >= state.totalNotes;
     case 'done':
@@ -82,8 +82,6 @@ export function onboardingReducer(s: OnboardingState, a: OnboardingAction): Onbo
         anthropicApiKey: a.anthropicApiKey ?? '',
         providerTestResult: a.testResult,
       };
-    case 'set-model':
-      return { ...s, modelDefault: a.defaultModel, modelHeavy: a.heavyModel };
     case 'index-progress':
       return { ...s, indexedNotes: a.done, totalNotes: a.total };
     case 'set-error':
