@@ -9,6 +9,7 @@ import { detectFormat, extractByFormat } from './extractors/index.js';
 import { rewrite } from './rewrite.js';
 import { buildVaultContext, type VaultContext } from './context.js';
 import { parseNote } from '../vault/parse.js';
+import { validateVaultRelativePath } from '../tools/validation.js';
 
 export interface IngestServiceDeps {
   paths: VaultPaths;
@@ -48,8 +49,27 @@ function sourceName(source: IngestJob['source']): string {
   return source.kind === 'file' ? source.filename : source.title;
 }
 
-function originalRelPath(source: IngestJob['source']): string {
-  if (source.kind === 'file') return `.sanji/originals/${source.filename}`;
+/**
+ * Build the vault-relative path for an original-source archive entry.
+ *
+ * `source.filename` arrives from a multipart upload and is client-controlled,
+ * so we strip any directory components with `basename` before composing the
+ * archive path. The composed path is then run through
+ * `validateVaultRelativePath` to defend against any residual surprises (empty
+ * basename, traversal segments smuggled through encoding, etc.). Returns null
+ * when the basename is empty after sanitization — caller surfaces an error.
+ */
+function originalRelPath(source: IngestJob['source']): string | null {
+  if (source.kind === 'file') {
+    const safe = basename(source.filename);
+    if (!safe || safe === '.' || safe === '..') return null;
+    const rel = `.sanji/originals/${safe}`;
+    try {
+      return validateVaultRelativePath(rel);
+    } catch {
+      return null;
+    }
+  }
   return `.sanji/originals/${kebab(source.title)}-${Date.now()}.txt`;
 }
 
@@ -149,6 +169,13 @@ export class IngestService {
         text = r.text;
         warnings = r.warnings;
         const origRel = originalRelPath(job.source);
+        if (!origRel) {
+          yield {
+            kind: 'error', fileId: job.fileId, sourceName: name,
+            phase: 'extract', message: `Invalid filename: ${name}.`,
+          };
+          return;
+        }
         const origAbs = join(this.deps.paths.vault, origRel);
         await mkdir(join(this.deps.paths.vault, '.sanji/originals'), { recursive: true });
         await writeFile(origAbs, job.source.content, 'utf-8');
@@ -160,6 +187,13 @@ export class IngestService {
         pages = r.pages;
         warnings = r.warnings;
         const origRel = originalRelPath(job.source);
+        if (!origRel) {
+          yield {
+            kind: 'error', fileId: job.fileId, sourceName: name,
+            phase: 'extract', message: `Invalid filename: ${name}.`,
+          };
+          return;
+        }
         const origAbs = join(this.deps.paths.vault, origRel);
         await mkdir(join(this.deps.paths.vault, '.sanji/originals'), { recursive: true });
         await writeFile(origAbs, job.source.data);

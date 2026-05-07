@@ -115,6 +115,29 @@ describe('IngestService', () => {
     db.close();
   });
 
+  it('strips directory components from uploaded filenames so originals stay inside .sanji/originals/', async () => {
+    const { service, paths, db } = setup();
+    const events: any[] = [];
+    for await (const ev of service.enqueue({
+      fileId: 'f1',
+      // The client-controlled filename tries to escape the originals dir.
+      // basename(...) collapses it to `escape.md`; the original lands inside
+      // `.sanji/originals/escape.md` and never above the vault.
+      source: { kind: 'file', data: Buffer.from('hello world'), filename: '../../../escape.md' },
+      abortController: new AbortController(),
+    })) {
+      events.push(ev);
+    }
+    // Ingestion succeeds end-to-end (the offline scripted adapter returns a valid note).
+    expect(events.at(-1)).toMatchObject({ kind: 'done' });
+    // The original is parked at the safe sanitized path...
+    const safeOriginal = join(paths.vault, '.sanji/originals/escape.md');
+    expect(existsSync(safeOriginal)).toBe(true);
+    // ...and definitely not above the vault root.
+    expect(existsSync(join(paths.vault, '../../../escape.md'))).toBe(false);
+    db.close();
+  });
+
   it('emits error event with phase=extract when paste content is empty', async () => {
     const { service, db } = setup();
     const events: any[] = [];
