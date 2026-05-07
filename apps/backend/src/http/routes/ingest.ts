@@ -37,6 +37,12 @@ export function ingestRoute(deps: IngestRouteDeps) {
       },
       abortController: ctrl,
     };
+    // When the client aborts the SSE fetch (Cancel button), Hono surfaces it
+    // on c.req.raw.signal. Forward that into the service so it aborts the
+    // in-flight LLM rewrite — otherwise the rewrite continues to completion
+    // server-side and a "cancelled" job still writes to the inbox.
+    const onClientAbort = () => deps.service.cancel(fileId);
+    c.req.raw.signal.addEventListener('abort', onClientAbort, { once: true });
     return streamSSE(c, async (stream) => {
       try {
         for await (const ev of deps.service.enqueue(job)) {
@@ -72,6 +78,12 @@ export function ingestRoute(deps: IngestRouteDeps) {
       source: { kind: 'file', data: buf, filename: file.name },
       abortController: ctrl,
     };
+    // When the client aborts the SSE fetch (Cancel button), Hono surfaces it
+    // on c.req.raw.signal. Forward that into the service so it aborts the
+    // in-flight LLM rewrite — otherwise the rewrite continues to completion
+    // server-side and a "cancelled" job still writes to the inbox.
+    const onClientAbort = () => deps.service.cancel(fileId);
+    c.req.raw.signal.addEventListener('abort', onClientAbort, { once: true });
     return streamSSE(c, async (stream) => {
       try {
         for await (const ev of deps.service.enqueue(job)) {

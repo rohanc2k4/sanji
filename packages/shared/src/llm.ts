@@ -27,6 +27,15 @@ export interface ChatOpts {
    * The adapter is responsible for surfacing the matching tool_use_* ChatEvents.
    */
   toolHandler?: (name: string, input: Record<string, unknown>) => Promise<string>;
+  /**
+   * Optional abort signal. Adapters that pass it through to the underlying
+   * SDK call cause the streaming HTTP request to terminate when fired, so
+   * callers (e.g. ingest cancel) can interrupt an in-flight rewrite mid-token
+   * instead of waiting for the SDK to finish before runSkill's next abort
+   * check fires. Adapters that ignore the signal degrade to per-event abort
+   * checking, which is still correct but slower to surface cancellation.
+   */
+  signal?: AbortSignal;
 }
 
 export type ChatEvent =

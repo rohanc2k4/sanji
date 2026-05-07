@@ -20,14 +20,19 @@ export class AnthropicApiAdapter implements ProviderAdapter {
   ) {}
 
   async *chat(opts: ChatOpts): AsyncIterable<ChatEvent> {
-    const stream = this.client.messages.stream({
-      model: opts.model,
-      max_tokens: opts.maxTokens ?? 1024,
-      system: opts.system,
-      messages: opts.messages
-        .filter((m) => m.role !== 'system')
-        .map((m) => ({ role: m.role, content: m.content })),
-    } as Anthropic.MessageStreamParams);
+    const stream = this.client.messages.stream(
+      {
+        model: opts.model,
+        max_tokens: opts.maxTokens ?? 1024,
+        system: opts.system,
+        messages: opts.messages
+          .filter((m) => m.role !== 'system')
+          .map((m) => ({ role: m.role, content: m.content })),
+      } as Anthropic.MessageStreamParams,
+      // Forward the AbortSignal to the underlying fetch so cancel() unblocks
+      // an in-flight HTTP request instead of waiting for the SDK to finish.
+      opts.signal ? { signal: opts.signal } : undefined,
+    );
 
     let usage: { input: number; output: number } | undefined;
     for await (const ev of stream as AsyncIterable<any>) {

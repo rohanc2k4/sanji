@@ -30,6 +30,7 @@ export async function runSkillWithUsage(opts: RunSkillOptions): Promise<RunSkill
     model: opts.model,
     system: opts.skill.body,
     messages: [{ role: 'user', content: opts.input }],
+    ...(opts.abortSignal ? { signal: opts.abortSignal } : {}),
   });
   for await (const ev of stream as AsyncIterable<ChatEvent>) {
     if (opts.abortSignal?.aborted) {

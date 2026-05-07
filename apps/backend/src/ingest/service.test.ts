@@ -165,6 +165,62 @@ describe('IngestService', () => {
     db.close();
   });
 
+  it('aborts the in-flight LLM rewrite when service.cancel() is called mid-flight', async () => {
+    // SlowAdapter holds onto the chat() generator until either the abort
+    // signal fires or 500ms elapses. cancel() flips the in-flight job's
+    // abortController, which propagates through rewrite() into runSkillWithUsage
+    // and surfaces here as a rejected wait. The service emits a phase=rewrite
+    // error with 'Cancelled by user.', and crucially never reaches the
+    // writing phase, so no inbox file lands on disk.
+    class SlowAdapter implements ProviderAdapter {
+      async *chat(opts: ChatOpts): AsyncIterable<ChatEvent> {
+        await new Promise<void>((resolve, reject) => {
+          const t = setTimeout(resolve, 500);
+          opts.signal?.addEventListener('abort', () => {
+            clearTimeout(t);
+            reject(new Error('aborted'));
+          }, { once: true });
+        });
+        yield { type: 'text_delta', text: VALID_OUTPUT };
+        yield { type: 'message_stop', usage: { input: 1, output: 1 } };
+      }
+      async getAvailableModels() { return []; }
+      async testCredentials() { return { ok: true as const }; }
+    }
+    const paths = resolveVaultPaths(dir);
+    mkdirSync(paths.sanjiDir, { recursive: true });
+    const db = openDb(paths.indexDb);
+    runMigrations(db);
+    const repo = new IndexRepo(db);
+    const adapter = new SlowAdapter();
+    const service = new IngestService({
+      paths, repo, adapter, model: 'sonnet', ingestSkill,
+    });
+
+    const events: any[] = [];
+    const consume = (async () => {
+      for await (const ev of service.enqueue({
+        fileId: 'cancel-1',
+        source: { kind: 'paste', title: 'demo', content: 'hello' },
+        abortController: new AbortController(),
+      })) {
+        events.push(ev);
+      }
+    })();
+
+    // Let the job advance into the rewriting phase, then cancel.
+    await new Promise((r) => setTimeout(r, 50));
+    service.cancel('cancel-1');
+    await consume;
+
+    const last = events.at(-1);
+    expect(last.kind).toBe('error');
+    expect(last.message).toMatch(/[Cc]ancelled/);
+    // No inbox file should have landed on disk.
+    expect(existsSync(join(paths.vault, 'inbox/demo.md'))).toBe(false);
+    db.close();
+  });
+
   it('emits error event with phase=extract when paste content is empty', async () => {
     const { service, db } = setup();
     const events: any[] = [];
