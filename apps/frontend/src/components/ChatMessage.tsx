@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import type { Turn } from './applyEvent';
 
 export interface ChatMessageProps {
@@ -114,26 +116,39 @@ export function ChatMessage({ turn, streaming }: ChatMessageProps) {
 
   const fullText = turn.deltas.join('');
   const revealedCount = useGeminiReveal(fullText, streaming === true);
-  const visibleNodes = renderRevealed(fullText, revealedCount);
   const totalWords = countWords(fullText);
   const stillRevealing = revealedCount < totalWords;
+  // Once the response is fully revealed AND the model is done streaming,
+  // swap from the per-word fade-in plain-text view to a fully-rendered
+  // markdown view. While streaming, the per-word view is the only sane
+  // thing to do — partial markdown ("## hel" mid-token) renders ugly. The
+  // flicker on swap is small because by the time we swap, the user's eye
+  // is already at the bottom of the message.
+  const showMarkdown =
+    streaming !== true && revealedCount >= totalWords && fullText.length > 0;
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="max-w-[68ch] whitespace-pre-wrap rounded-md border border-border bg-card px-3 py-2 text-sm leading-relaxed text-foreground">
-        {visibleNodes.length === 0 ? (
-          <span className="inline-flex items-center gap-1 text-muted-foreground/60">
-            <span className="size-1.5 animate-pulse rounded-full bg-muted-foreground/50" />
-            <span className="size-1.5 animate-pulse rounded-full bg-muted-foreground/50 [animation-delay:120ms]" />
-            <span className="size-1.5 animate-pulse rounded-full bg-muted-foreground/50 [animation-delay:240ms]" />
-          </span>
-        ) : (
-          visibleNodes
-        )}
-        {streaming && stillRevealing && (
-          <span className="ml-0.5 inline-block h-3.5 w-[2px] translate-y-[2px] animate-pulse bg-primary/70" />
-        )}
-      </div>
+      {showMarkdown ? (
+        <div className="chat-markdown max-w-[68ch]">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{fullText}</ReactMarkdown>
+        </div>
+      ) : (
+        <div className="max-w-[68ch] whitespace-pre-wrap text-sm leading-relaxed text-foreground">
+          {revealedCount === 0 ? (
+            <span className="inline-flex items-center gap-1 text-muted-foreground/60">
+              <span className="size-1.5 animate-pulse rounded-full bg-muted-foreground/50" />
+              <span className="size-1.5 animate-pulse rounded-full bg-muted-foreground/50 [animation-delay:120ms]" />
+              <span className="size-1.5 animate-pulse rounded-full bg-muted-foreground/50 [animation-delay:240ms]" />
+            </span>
+          ) : (
+            renderRevealed(fullText, revealedCount)
+          )}
+          {streaming && stillRevealing && (
+            <span className="ml-0.5 inline-block h-3.5 w-[2px] translate-y-[2px] animate-pulse bg-primary/70" />
+          )}
+        </div>
+      )}
 
       {/* Tool calls are intentionally not rendered here — the agent's
           mcp__sanji-tools__* invocations are noise for the user. They
