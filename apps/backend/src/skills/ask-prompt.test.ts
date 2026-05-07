@@ -77,4 +77,15 @@ describe('cite-or-decline rules in /ask system prompt', () => {
     expect(ask.tools).toContain('list_vault');
     expect(ask.tools).toContain('grep_vault');
   });
+
+  it('requires citations on every vault-content sentence, not just key facts', async () => {
+    const p = await loadAskBody();
+    // The strict-citation rule must be in effect; "every sentence" is the keyword.
+    expect(p.toLowerCase()).toMatch(/every sentence.*citation|cite.*every sentence/);
+  });
+
+  it('instructs the agent to self-check before sending', async () => {
+    const p = await loadAskBody();
+    expect(p.toLowerCase()).toMatch(/self.check|before sending/);
+  });
 });
