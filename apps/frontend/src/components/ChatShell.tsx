@@ -55,8 +55,17 @@ export function ChatShell({
       </header>
 
       <div className="relative flex flex-1 overflow-hidden">
-        {!sidebarCollapsed && (
-          <aside className="w-[220px] shrink-0 border-r border-border bg-sidebar">
+        {/* Aside container animates its width 220 ↔ 0 with overflow-hidden
+            so the inner sidebar (fixed at 220px) gets clipped from the
+            right during the transition rather than reflowing. Same 200ms
+            ease-out cadence as the editor pane slide. */}
+        <aside
+          className={[
+            'shrink-0 overflow-hidden bg-sidebar transition-[width,border] duration-200 ease-out',
+            sidebarCollapsed ? 'w-0 border-r-0' : 'w-[220px] border-r border-border',
+          ].join(' ')}
+        >
+          <div className="h-full w-[220px]">
             <SourcesSidebar
               selectedPath={editorPath}
               onSelect={onOpenEditor}
@@ -64,8 +73,8 @@ export function ChatShell({
               refreshKey={sidebarRefreshKey}
               onRenamed={onNoteRenamed}
             />
-          </aside>
-        )}
+          </div>
+        </aside>
 
         <main className="relative flex flex-1 flex-col bg-background">
           <ChatPane turns={chat.turns} streaming={chat.streaming} onFilesDropped={onFilesDropped} />

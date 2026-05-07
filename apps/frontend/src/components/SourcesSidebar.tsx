@@ -98,7 +98,11 @@ function TreeRow(props: TreeRowProps) {
         </li>
       );
     }
-    const label = note.title ?? node.name.replace(/\.md$/, '');
+    // Display the basename, not the frontmatter title. The user expects rename
+    // (which changes the basename) to immediately update the visible label;
+    // the title field is metadata that surfaces in the editor header but
+    // shouldn't shadow the filename in the tree.
+    const label = node.name.replace(/\.md$/, '');
     return (
       <li>
         <button
@@ -191,7 +195,13 @@ function RenameRow({ indent, initialDraft, onCommit, onCancel }: RenameRowProps)
           }
         }}
         onBlur={() => onCommit(draft)}
-        className="h-6 min-w-0 flex-1 rounded border border-input bg-background px-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+        // Inline 16px font-size on the input prevents iOS / touch-Safari from
+        // auto-zooming on focus (browsers zoom inputs with font-size < 16px).
+        // We then visually scale the rendered glyphs back to ~14px via the
+        // line-height + h-6 wrapper so it looks consistent with surrounding
+        // text-sm tree rows.
+        style={{ fontSize: '16px' }}
+        className="h-6 min-w-0 flex-1 rounded border border-input bg-background px-1.5 leading-tight text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
       />
     </div>
   );
