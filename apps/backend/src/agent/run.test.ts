@@ -60,6 +60,50 @@ describe('runAgent', () => {
     expect(out.find((e) => e.type === 'tool_use_complete')).toBeTruthy();
   });
 
+  it('emits tool_call_start with args_summary after tool_use_complete and tool_call_end after tool_result', async () => {
+    const adapter = fakeAdapter([
+      { type: 'tool_use_complete', id: 't1', name: 'grep_vault', input: { pattern: 'logistic regression' } },
+      { type: 'tool_result', id: 't1', content: 'hit.md:1:logistic regression' },
+      { type: 'tool_use_complete', id: 't2', name: 'read_note', input: { path: 'inbox/lr_sgd.md' } },
+      { type: 'tool_result', id: 't2', content: 'body' },
+      { type: 'text_delta', text: 'ok' },
+      { type: 'message_stop' },
+    ]);
+    const ctx = {} as ToolContext;
+    const out: ChatEvent[] = [];
+    await collectAll(
+      runAgent({ adapter, registry: new Registry(), ctx, skills: [ask], defaultModel: 'claude-sonnet-4-6' }, 'hi'),
+      out,
+    );
+
+    const types = out.map((e) => e.type);
+    // For each tool: tool_use_complete → tool_call_start → tool_result → tool_call_end
+    expect(types).toEqual([
+      'tool_use_complete',
+      'tool_call_start',
+      'tool_result',
+      'tool_call_end',
+      'tool_use_complete',
+      'tool_call_start',
+      'tool_result',
+      'tool_call_end',
+      'text_delta',
+      'message_stop',
+    ]);
+
+    const start1 = out[1] as Extract<ChatEvent, { type: 'tool_call_start' }>;
+    expect(start1.tool).toBe('grep_vault');
+    expect(start1.args_summary).toBe('Searching for "logistic regression"');
+    expect(start1.id).toBe('t1');
+
+    const end1 = out[3] as Extract<ChatEvent, { type: 'tool_call_end' }>;
+    expect(end1.tool).toBe('grep_vault');
+    expect(end1.id).toBe('t1');
+
+    const start2 = out[5] as Extract<ChatEvent, { type: 'tool_call_start' }>;
+    expect(start2.args_summary).toBe('Reading inbox/lr_sgd.md');
+  });
+
   it('falls through to /ask for plain text', async () => {
     const adapter = fakeAdapter([{ type: 'message_stop' }]);
     const stats = await collectAll(

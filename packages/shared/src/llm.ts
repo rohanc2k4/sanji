@@ -44,6 +44,15 @@ export type ChatEvent =
   | { type: 'tool_use_input_delta'; id: string; json: string }
   | { type: 'tool_use_complete'; id: string; name: string; input: Record<string, unknown> }
   | { type: 'tool_result'; id: string; content: string; isError?: boolean }
+  /**
+   * High-level activity events derived from tool_use_complete / tool_result.
+   * Distinct from tool_use_* (which mirror the provider's wire protocol):
+   * these carry a human-readable args_summary so the chat UI can show "what
+   * the agent is doing right now" without each frontend re-implementing the
+   * argsSummary mapping. Emitted by runAgent, not by the provider adapter.
+   */
+  | { type: 'tool_call_start'; id: string; tool: string; args_summary: string }
+  | { type: 'tool_call_end'; id: string; tool: string }
   | { type: 'message_stop'; usage?: { input: number; output: number } }
   | { type: 'error'; message: string };
 

@@ -3,6 +3,7 @@ import { matchSkill } from '../skills/match.js';
 import type { Skill } from '../skills/parse.js';
 import type { Registry } from '../tools/registry.js';
 import type { ToolContext } from '../tools/types.js';
+import { argsSummary } from './args-summary.js';
 
 export interface AgentDependencies {
   adapter: ProviderAdapter;
@@ -45,8 +46,29 @@ export async function* runAgent(
       : undefined,
   });
 
+  // Track tool name by id so tool_call_end can include the tool label
+  // even though tool_result doesn't carry the name on the wire.
+  const toolNameById = new Map<string, string>();
+
   for await (const event of stream) {
-    if (event.type === 'tool_use_complete') toolCalls += 1;
+    if (event.type === 'tool_use_complete') {
+      toolCalls += 1;
+      yield event;
+      toolNameById.set(event.id, event.name);
+      yield {
+        type: 'tool_call_start',
+        id: event.id,
+        tool: event.name,
+        args_summary: argsSummary(event.name, event.input),
+      };
+      continue;
+    }
+    if (event.type === 'tool_result') {
+      yield event;
+      const tool = toolNameById.get(event.id) ?? 'unknown';
+      yield { type: 'tool_call_end', id: event.id, tool };
+      continue;
+    }
     yield event;
   }
 
