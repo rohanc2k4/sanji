@@ -1,0 +1,18 @@
+[eval] method=grep vault=/Users/rohanchawla/Dev_Projects/sanji/sample-vault db=/tmp/sanji-eval-1778186790567.db
+[eval] indexed 62 notes / 684 chunks in 14.6s
+
+Query                                       Expected                                Top1Path                                R@5   Rank 
+------------------------------------------  --------------------------------------  --------------------------------------  ----  -----
+how do you decide between handing each pr…  cmsc416/pages/block-vs-cyclic-distrib…  (none)                                  N     -    
+why does walking a 2D array column by col…  cmsc416/pages/cache-performance.md      (none)                                  N     -    
+what happens when too many threads write …  cmsc416/pages/shared-memory-parallel.…  (none)                                  N     -    
+how do you sum N numbers across thousands…  cmsc416/pages/cuda.md                   (none)                                  N     -    
+Amdahl says my speedup is capped but Gust…  cmsc416/pages/strong-vs-weak-scaling.…  (none)                                  N     -    
+best rank-k approximation in the Frobeniu…  math401/pages/singular-value-decompos…  (none)                                  N     -    
+how to tell if a two-qubit state cannot b…  math401/pages/entanglement.md           (none)                                  N     -    
+fitting a line through noisy data points …  math401/pages/least-squares.md          (none)                                  N     -    
+long-run probability distribution of a ra…  math401/pages/markov-chains.md          (none)                                  N     -    
+second smallest eigenvalue of a matrix th…  math401/pages/graph-laplacian-fiedler…  (none)                                  N     -    
+
+[eval] method=grep  Recall@5 = 0/10 = 0.000
+[eval] method=grep  MRR      = 0.000

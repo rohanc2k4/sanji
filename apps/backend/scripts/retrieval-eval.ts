@@ -6,7 +6,7 @@
  * retrieval method and reports recall@5 and MRR.
  *
  * Usage:
- *   RETRIEVAL_METHOD=fts|semantic|hybrid \
+ *   RETRIEVAL_METHOD=fts|semantic|hybrid|grep \
  *   pnpm -F @sanji/backend exec tsx scripts/retrieval-eval.ts [vault-path]
  *
  * Default vault path is the sample-vault at the repo root. The harness writes
@@ -23,6 +23,7 @@ import { IndexRepo } from '../src/index/repo.js';
 import { FakeEmbedder, type Embedder } from '../src/embeddings/embedder.js';
 import { TransformersEmbedder } from '../src/embeddings/transformers.js';
 import { hybridSearchTool } from '../src/tools/hybrid-search.js';
+import { grepVaultTool } from '../src/tools/grep-vault.js';
 import { resolveVaultPaths } from '../src/config/paths.js';
 import type { ToolContext } from '../src/tools/types.js';
 
@@ -36,7 +37,7 @@ interface Fixture {
   expected: string;
 }
 
-type Method = 'fts' | 'semantic' | 'hybrid';
+type Method = 'fts' | 'semantic' | 'hybrid' | 'grep';
 
 function buildEmbedder(): Embedder {
   return process.env.SANJI_FAKE_EMBED === '1' ? new FakeEmbedder() : new TransformersEmbedder();
@@ -44,8 +45,8 @@ function buildEmbedder(): Embedder {
 
 function getMethod(): Method {
   const m = (process.env.RETRIEVAL_METHOD ?? 'semantic').toLowerCase();
-  if (m !== 'fts' && m !== 'semantic' && m !== 'hybrid') {
-    throw new Error(`unknown RETRIEVAL_METHOD=${m} (expected fts|semantic|hybrid)`);
+  if (m !== 'fts' && m !== 'semantic' && m !== 'hybrid' && m !== 'grep') {
+    throw new Error(`unknown RETRIEVAL_METHOD=${m} (expected fts|semantic|hybrid|grep)`);
   }
   return m;
 }
@@ -99,6 +100,17 @@ async function topPathsForQuery(
     // Pull more chunks than k so dedupe-by-path can still produce k notes.
     const hits = repo.knnChunks(vec, k * 4);
     return dedupeByPath(hits.map((h) => h.notePath), k);
+  }
+  if (method === 'grep') {
+    const ctx: ToolContext = {
+      paths: resolveVaultPaths(vaultPath),
+      db,
+      repo,
+      embedder,
+    };
+    const out = await grepVaultTool.run({ pattern: query, max_results: 20 }, ctx);
+    const hits = JSON.parse(out) as Array<{ path: string }>;
+    return dedupeByPath(hits.map((h) => h.path), k);
   }
   if (method === 'hybrid') {
     const ctx: ToolContext = {
