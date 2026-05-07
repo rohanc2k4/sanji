@@ -23,11 +23,13 @@ export interface ParsedNote {
 function sanitizeFrontmatter(source: string): string {
   const m = source.match(/^---\n([\s\S]*?)\n---(\r?\n[\s\S]*)?$/);
   if (!m) return source;
-  const [, fmBlock, rest = ''] = m;
+  const fmBlock = m[1] ?? '';
+  const rest = m[2] ?? '';
   const fixedLines = fmBlock.split('\n').map((line) => {
     const kv = line.match(/^([A-Za-z_][\w-]*): +(.+?)\s*$/);
     if (!kv) return line;
-    const [, key, value] = kv;
+    const key = kv[1]!;
+    const value = kv[2] ?? '';
     const trimmed = value.trim();
     if (!trimmed) return line;
     const firstChar = trimmed[0];
