@@ -5,6 +5,31 @@ import { EditorState } from '@codemirror/state';
 import { EditorView, keymap } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { markdown } from '@codemirror/lang-markdown';
+import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
+import { tags as t } from '@lezer/highlight';
+
+// Notion-ish styling for the markdown source: headings render at heading
+// sizes, **strong** is bold, *emphasis* is italic, `inline code` uses the
+// mono font with a subtle background, links pick up the accent color.
+// The markdown delimiters (`**`, `#`, etc.) stay visible for v0.1 — full
+// hide-markers-when-cursor-is-elsewhere is a v0.2 polish item that needs
+// a custom decoration extension.
+const markdownStyle = HighlightStyle.define([
+  { tag: t.heading1, fontSize: '1.6em', fontWeight: '600', lineHeight: '1.2' },
+  { tag: t.heading2, fontSize: '1.35em', fontWeight: '600', lineHeight: '1.25' },
+  { tag: t.heading3, fontSize: '1.15em', fontWeight: '600' },
+  { tag: t.heading4, fontWeight: '600' },
+  { tag: t.heading5, fontWeight: '600' },
+  { tag: t.heading6, fontWeight: '600' },
+  { tag: t.strong, fontWeight: '700' },
+  { tag: t.emphasis, fontStyle: 'italic' },
+  { tag: t.strikethrough, textDecoration: 'line-through' },
+  { tag: t.link, color: 'var(--primary)', textDecoration: 'underline' },
+  { tag: t.url, color: 'var(--primary)' },
+  { tag: t.monospace, fontFamily: 'var(--font-mono)', backgroundColor: 'var(--muted)' },
+  { tag: t.quote, color: 'var(--muted-foreground)', fontStyle: 'italic' },
+  { tag: t.list, color: 'var(--foreground)' },
+]);
 import { getNote, putNote } from '@/api/notes';
 import { isApiError } from '@sanji/shared';
 import { Button } from '@/components/ui/button';
@@ -89,6 +114,7 @@ export function EditorPanel({ path, onClose, onSaved }: EditorPanelProps) {
         extensions: [
           history(),
           markdown(),
+          syntaxHighlighting(markdownStyle),
           EditorView.lineWrapping,
           keymap.of([
             {

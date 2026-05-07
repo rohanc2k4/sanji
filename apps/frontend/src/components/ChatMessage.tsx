@@ -1,5 +1,4 @@
 import type { Turn } from './applyEvent';
-import { ToolCallPill } from './ToolCallPill';
 
 export interface ChatMessageProps {
   turn: Turn;
@@ -34,9 +33,11 @@ export function ChatMessage({ turn, streaming }: ChatMessageProps) {
         )}
       </div>
 
-      {turn.toolCalls.map((tc) => (
-        <ToolCallPill key={tc.id} call={tc} />
-      ))}
+      {/* Tool calls are intentionally not rendered here — the agent's
+          mcp__sanji-tools__* invocations are noise for the user. They
+          still drive the agent loop on the backend; only the surfacing
+          is suppressed. The applyEvent reducer continues to capture
+          them for debugging via the turn.toolCalls field. */}
 
       {turn.errors.map((err, i) => (
         <div
