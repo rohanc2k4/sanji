@@ -74,6 +74,29 @@ describe('IngestService', () => {
     db.close();
   });
 
+  it('writes a YAML frontmatter block with title, source, ingested_on, content_type', async () => {
+    const { service, paths, db } = setup();
+    const events: any[] = [];
+    for await (const ev of service.enqueue({
+      fileId: 'f1',
+      source: { kind: 'paste', title: 'demo', content: 'hello world' },
+      abortController: new AbortController(),
+    })) {
+      events.push(ev);
+    }
+    const done = events.at(-1)!;
+    const onDisk = readFileSync(join(paths.vault, done.outputPath), 'utf-8');
+    expect(onDisk.startsWith('---\n')).toBe(true);
+    const m = onDisk.match(/^---\n([\s\S]*?)\n---\n/);
+    expect(m).not.toBeNull();
+    const fmBlock = m![1]!;
+    expect(fmBlock).toMatch(/^title: /m);
+    expect(fmBlock).toMatch(/^source: /m);
+    expect(fmBlock).toMatch(/^ingested_on: /m);
+    expect(fmBlock).toMatch(/^content_type: /m);
+    db.close();
+  });
+
   it('emits skipped without calling LLM when target inbox/<basename>.md already exists', async () => {
     const { service, paths, db, adapter } = setup();
     mkdirSync(join(paths.vault, 'inbox'), { recursive: true });

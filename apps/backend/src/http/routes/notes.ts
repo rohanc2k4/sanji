@@ -53,7 +53,10 @@ export function notesRoute(deps: { paths: VaultPaths; repo?: IndexRepo }) {
       if (deps.repo) {
         const abs = join(deps.paths.vault, validated);
         const mtimeMs = statSync(abs).mtimeMs;
-        const parsed = parseNote(validated, body.content, mtimeMs);
+        // Re-read from disk: write-note may have re-prepended preserved
+        // frontmatter, so the bytes on disk can differ from body.content.
+        const onDisk = await readFile(abs, 'utf8');
+        const parsed = parseNote(validated, onDisk, mtimeMs);
         deps.repo.upsertNote(parsed.note);
       }
       return c.json(JSON.parse(result));

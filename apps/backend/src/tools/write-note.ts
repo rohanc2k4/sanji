@@ -17,6 +17,34 @@ async function fileExists(p: string): Promise<boolean> {
   }
 }
 
+const FRONTMATTER_RE = /^---\s*\n[\s\S]*?\n---\s*\n?/;
+
+/**
+ * Pull the leading YAML frontmatter block (and its trailing newline) off
+ * `source`. Returns null when the file does not start with `---`.
+ */
+function extractFrontmatterBlock(source: string): string | null {
+  const match = source.match(FRONTMATTER_RE);
+  return match ? match[0] : null;
+}
+
+/**
+ * Guard against silent frontmatter loss when the chat agent (or notes editor)
+ * overwrites an ingested note. If the existing file had a frontmatter block
+ * and the incoming content does not, prepend the old block so identity
+ * metadata (title, source, ingested_on, etc.) survives the write.
+ */
+function preserveFrontmatter(previous: string, next: string): string {
+  if (!next.startsWith('---')) {
+    const block = extractFrontmatterBlock(previous);
+    if (block) {
+      const sep = next.startsWith('\n') ? '' : '\n';
+      return `${block}${sep}${next}`;
+    }
+  }
+  return next;
+}
+
 export const writeNoteTool: Tool = {
   name: 'write_note',
   description:
@@ -44,6 +72,7 @@ export const writeNoteTool: Tool = {
     await mkdir(dirname(abs), { recursive: true });
 
     let snapshotRel: string | null = null;
+    let finalContent = content;
     if (await fileExists(abs)) {
       const previous = await readFile(abs, 'utf8');
       const ts = Date.now();
@@ -51,15 +80,19 @@ export const writeNoteTool: Tool = {
       await mkdir(dirname(snapshotAbs), { recursive: true });
       await writeFile(snapshotAbs, previous, 'utf8');
       snapshotRel = relative(ctx.paths.vault, snapshotAbs);
+      // If the caller forgot to include the existing frontmatter (common when
+      // the chat agent rewrites a note body), keep the old block so identity
+      // metadata isn't silently lost.
+      finalContent = preserveFrontmatter(previous, content);
     }
 
-    await writeFile(tmp, content, 'utf8');
+    await writeFile(tmp, finalContent, 'utf8');
     await rename(tmp, abs);
 
     return JSON.stringify({
       path,
       snapshot: snapshotRel,
-      bytesWritten: Buffer.byteLength(content, 'utf8'),
+      bytesWritten: Buffer.byteLength(finalContent, 'utf8'),
     });
   },
 };
