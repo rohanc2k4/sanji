@@ -7,6 +7,7 @@ import { writeNoteTool } from '../../tools/write-note.js';
 import { validateVaultRelativePath } from '../../tools/validation.js';
 import type { VaultPaths } from '../../config/paths.js';
 import type { ToolContext } from '../../tools/types.js';
+import type { Indexer } from '../../index/indexer.js';
 import type { IndexRepo } from '../../index/repo.js';
 
 /**
@@ -53,7 +54,7 @@ function titleFromFilename(relPath: string): string {
   return basename(relPath, extname(relPath));
 }
 
-export function notesRoute(deps: { paths: VaultPaths; repo?: IndexRepo }) {
+export function notesRoute(deps: { paths: VaultPaths; repo?: IndexRepo; indexer?: Indexer }) {
   const r = new Hono();
 
   r.get('/api/notes/*', async (c) => {
@@ -159,13 +160,27 @@ export function notesRoute(deps: { paths: VaultPaths; repo?: IndexRepo }) {
 
     if (deps.repo) {
       try {
+        // Always purge the old path (chunks + wikilinks cascade with deleteNote).
         deps.repo.deleteNote(fromValid);
-        const source = await readFile(toAbs, 'utf8');
-        const mtimeMs = statSync(toAbs).mtimeMs;
-        const parsed = parseNote(toValid, source, mtimeMs);
-        deps.repo.upsertNote(parsed.note);
-      } catch {
-        // Non-fatal — watcher will reconcile.
+        if (deps.indexer) {
+          // Full re-chunk + re-embed at the new path so semantic_search /
+          // hybrid_search keep returning hits for the renamed note instead
+          // of going dark until the next full indexAll().
+          await deps.indexer.indexFile(deps.paths.vault, toValid);
+        } else {
+          // No indexer wired — upsert a bare notes row so SourcesSidebar
+          // sees the new path. Watcher reconciles chunks async.
+          const source = await readFile(toAbs, 'utf8');
+          const mtimeMs = statSync(toAbs).mtimeMs;
+          const parsed = parseNote(toValid, source, mtimeMs);
+          deps.repo.upsertNote(parsed.note);
+        }
+      } catch (err) {
+        process.stderr.write(
+          `post-rename index update failed for ${toValid}: ${
+            err instanceof Error ? err.message : String(err)
+          }\n`,
+        );
       }
     }
     return c.json({ from: fromValid, to: toValid });

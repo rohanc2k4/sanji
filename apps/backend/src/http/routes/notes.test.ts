@@ -7,21 +7,27 @@ import { notesRoute, syncTitleToFilename } from './notes.js';
 import { resolveVaultPaths } from '../../config/paths.js';
 import { openDb } from '../../db/client.js';
 import { runMigrations } from '../../db/migrate.js';
+import { FakeEmbedder } from '../../embeddings/embedder.js';
+import { Indexer } from '../../index/indexer.js';
 import { IndexRepo } from '../../index/repo.js';
 
 let dir: string;
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'sanji-notes-')); });
 afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
 
-function mount() {
+function mount(opts?: { withIndexer?: boolean }) {
   const paths = resolveVaultPaths(dir);
   mkdirSync(paths.sanjiDir, { recursive: true });
   const db = openDb(':memory:');
   runMigrations(db);
   const repo = new IndexRepo(db);
+  const embedder = new FakeEmbedder();
+  const indexer = opts?.withIndexer
+    ? new Indexer(db, embedder, { chunkSizeTokens: 500, chunkOverlapTokens: 50 })
+    : undefined;
   const app = new Hono();
-  app.route('/', notesRoute({ paths, repo }));
-  return { app, paths, repo };
+  app.route('/', notesRoute({ paths, repo, ...(indexer ? { indexer } : {}) }));
+  return { app, paths, repo, embedder, indexer };
 }
 
 describe('syncTitleToFilename', () => {
@@ -175,6 +181,34 @@ describe('notes route', () => {
     expect(readFileSync(join(paths.vault, 'b.md'), 'utf8')).toBe(
       'just plain text\nno headers here\n',
     );
+  });
+
+  it('POST /api/notes/rename re-chunks the new path so semantic retrieval keeps working', async () => {
+    // Without re-indexing, the rename route deletes chunks for the old path
+    // (via deleteNote cascade) and inserts a bare notes row at the new path
+    // — so semantic_search / hybrid_search return zero hits for the renamed
+    // note's body until the next full indexAll().
+    writeFileSync(
+      join(dir, 'a.md'),
+      '---\ntitle: A\n---\n\n# A\n\nthe quick brown fox jumps over the lazy dog\n',
+    );
+    const { app, repo, embedder, indexer } = mount({ withIndexer: true });
+    // Seed: index a.md so chunks exist before rename.
+    await indexer!.indexFile(dir, 'a.md');
+    expect(repo.knnChunks(await embedder.embed('quick brown fox'), 5)
+      .some((h) => h.notePath === 'a.md')).toBe(true);
+
+    const res = await app.request('/api/notes/rename', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ from: 'a.md', to: 'b.md' }),
+    });
+    expect(res.status).toBe(200);
+
+    const queryVec = await embedder.embed('quick brown fox');
+    const hits = repo.knnChunks(queryVec, 10);
+    expect(hits.some((h) => h.notePath === 'b.md')).toBe(true);
+    expect(hits.some((h) => h.notePath === 'a.md')).toBe(false);
   });
 
   it('POST /api/notes/rename 404s when source missing, 409s when target exists', async () => {
