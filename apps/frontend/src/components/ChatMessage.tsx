@@ -140,28 +140,39 @@ export function ChatMessage({ turn, streaming }: ChatMessageProps) {
   const showMarkdown =
     streaming !== true && revealedCount >= totalWords && fullText.length > 0;
 
+  // The pending "..." dots indicator is gated on `streaming === true` so it
+  // can never persist after the SSE stream closes. If a turn ends with no
+  // text deltas (e.g. assistant only made tool calls, or the stream was
+  // aborted, or the backend errored before any text arrived), the
+  // not-streaming branch renders nothing for the body and only any errors
+  // surface below. Without this gate, a dots indicator that mounted on a
+  // turn with no deltas would stay visible forever (revealedCount === 0,
+  // total === 0 → previous code path always rendered the dots).
+  const showPendingDots = streaming === true && revealedCount === 0;
+  const hasBody = fullText.length > 0;
+
   return (
     <div className="flex flex-col gap-2">
       {showMarkdown ? (
         <div className="chat-markdown max-w-[68ch]">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>{fullText}</ReactMarkdown>
         </div>
-      ) : (
+      ) : showPendingDots ? (
         <div className="max-w-[68ch] whitespace-pre-wrap text-sm leading-relaxed text-foreground">
-          {revealedCount === 0 ? (
-            <span className="inline-flex items-center gap-1 text-muted-foreground/60">
-              <span className="size-1.5 animate-pulse rounded-full bg-muted-foreground/50" />
-              <span className="size-1.5 animate-pulse rounded-full bg-muted-foreground/50 [animation-delay:120ms]" />
-              <span className="size-1.5 animate-pulse rounded-full bg-muted-foreground/50 [animation-delay:240ms]" />
-            </span>
-          ) : (
-            renderRevealed(fullText, revealedCount)
-          )}
+          <span className="inline-flex items-center gap-1 text-muted-foreground/60">
+            <span className="size-1.5 animate-pulse rounded-full bg-muted-foreground/50" />
+            <span className="size-1.5 animate-pulse rounded-full bg-muted-foreground/50 [animation-delay:120ms]" />
+            <span className="size-1.5 animate-pulse rounded-full bg-muted-foreground/50 [animation-delay:240ms]" />
+          </span>
+        </div>
+      ) : hasBody ? (
+        <div className="max-w-[68ch] whitespace-pre-wrap text-sm leading-relaxed text-foreground">
+          {renderRevealed(fullText, revealedCount)}
           {streaming && stillRevealing && (
             <span className="ml-0.5 inline-block h-3.5 w-[2px] translate-y-[2px] animate-pulse bg-primary/70" />
           )}
         </div>
-      )}
+      ) : null}
 
       {/* Tool calls are intentionally not rendered here — the agent's
           mcp__sanji-tools__* invocations are noise for the user. They
