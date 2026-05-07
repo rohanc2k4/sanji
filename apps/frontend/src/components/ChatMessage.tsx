@@ -68,10 +68,23 @@ function useGeminiReveal(fullText: string, streaming: boolean): number {
         setRevealed(revealedRef.current);
       }
 
+      // Park the loop once the message is fully revealed AND streaming has
+      // ended. While streaming is still in flight (remaining could be 0
+      // momentarily between SSE chunks), keep ticking so the next chunk's
+      // words start animating without a cold-start delay. Once both
+      // conditions hold, parking the RAF avoids a permanent 60fps loop per
+      // completed message — without this, a long conversation accumulates
+      // one idle RAF loop per assistant turn.
+      if (revealedRef.current >= countWords(fullRef.current) && !streamingRef.current) {
+        raf = 0;
+        return;
+      }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+    };
   }, []);
 
   return revealed;
