@@ -11,7 +11,7 @@ export interface RewriteDeps {
   llm: (prompt: { system: string; user: string }) => Promise<string>;
 }
 
-const SYSTEM = `Generate 3 alternative phrasings of the given query that a study assistant might use to search a personal knowledge base. Vary vocabulary and specificity. Output only the 3 phrasings, one per line, no numbering, no commentary.`;
+const SYSTEM = `Generate 3 alternative phrasings of the given query for searching a personal markdown knowledge base. Cover different surface vocabulary so retrieval bridges lexical mismatches: include filename-style tokens (lowercase, underscores or hyphens), common abbreviations and their expansions (SGD ↔ stochastic gradient descent, RAG ↔ retrieval-augmented generation, RREF ↔ row reduced echelon form), and adjacent technical terms a student would actually type. Each phrasing should be a search query, not a sentence. Output exactly 3 lines, one phrasing per line, no numbering or commentary.`;
 
 export async function rewriteQuery(query: string, deps: RewriteDeps): Promise<string[]> {
   try {
