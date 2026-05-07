@@ -1,5 +1,5 @@
 ---
-title: SVD: Wide Matrix Shortcut
+title: "SVD: Wide Matrix Shortcut"
 type: problem
 status: evergreen
 last_updated: 2026-04-09

@@ -1,5 +1,5 @@
 ---
-title: Quantum: Global Phase (Same State Test)
+title: "Quantum: Global Phase (Same State Test)"
 type: problem
 status: evergreen
 last_updated: 2026-04-09

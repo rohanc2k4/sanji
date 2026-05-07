@@ -1,5 +1,5 @@
 ---
-title: Quantum: Superposition w.r.t. a Basis
+title: "Quantum: Superposition w.r.t. a Basis"
 type: problem
 status: evergreen
 last_updated: 2026-04-09

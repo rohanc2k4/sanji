@@ -1,5 +1,5 @@
 ---
-title: Orthogonal Diagonalization: 3x3 with Repeated Eigenvalue
+title: "Orthogonal Diagonalization: 3x3 with Repeated Eigenvalue"
 type: problem
 status: evergreen
 last_updated: 2026-04-09

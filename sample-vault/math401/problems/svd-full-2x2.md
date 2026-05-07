@@ -1,5 +1,5 @@
 ---
-title: SVD: Full Computation (2x2)
+title: "SVD: Full Computation (2x2)"
 type: problem
 status: evergreen
 last_updated: 2026-04-09

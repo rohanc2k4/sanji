@@ -1,5 +1,5 @@
 ---
-title: Quantum: Measurement Probabilities
+title: "Quantum: Measurement Probabilities"
 type: problem
 status: evergreen
 last_updated: 2026-04-09

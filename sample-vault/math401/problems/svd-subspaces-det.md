@@ -1,5 +1,5 @@
 ---
-title: SVD: Subspaces, Rank, and Determinant
+title: "SVD: Subspaces, Rank, and Determinant"
 type: problem
 status: evergreen
 last_updated: 2026-04-09
