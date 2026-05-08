@@ -58,4 +58,19 @@ describe('grep_vault tool', () => {
     await expect(grepVaultTool.run({ pattern: '' }, { paths: { vault } } as any)).rejects.toThrow();
     await expect(grepVaultTool.run({ pattern: '   ' }, { paths: { vault } } as any)).rejects.toThrow();
   });
+
+  it('falls back to literal substring when the pattern is an invalid regex', async () => {
+    // `[unmatched` is an unparseable regex (rg exits 2, Node RegExp ctor
+    // throws). Both the rg adapter and the Node fallback should retry
+    // in fixed-strings mode and find a literal match. Without this
+    // fallback, a single bad pattern from the LLM takes the whole
+    // grep_vault retrieval path offline.
+    writeFileSync(join(vault, 'literal.md'), 'this line has [unmatched bracket text\n');
+    const out = JSON.parse(
+      await grepVaultTool.run({ pattern: '[unmatched' }, { paths: { vault } } as any),
+    );
+    expect(out.length).toBeGreaterThanOrEqual(1);
+    expect(out.some((m: any) => m.path === 'literal.md')).toBe(true);
+    expect(out[0].text).toContain('[unmatched');
+  });
 });

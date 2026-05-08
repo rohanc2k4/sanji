@@ -12,6 +12,15 @@ export interface GrepOpts {
   folder?: string;
   caseSensitive: boolean;
   maxResults: number;
+  /**
+   * Internal flag set by the regex-error fallback path: re-runs rg with
+   * `--fixed-strings` so the pattern is matched literally instead of as
+   * a regex. The Node fallback in grep-vault-node already does this on
+   * `RegExp` constructor failure; without it here, the rg adapter
+   * propagates exit-code-2 errors and the entire grep_vault retrieval
+   * path goes dark on a single bad pattern.
+   */
+  _useFixedStrings?: boolean;
 }
 
 /**
@@ -30,6 +39,7 @@ export async function rgGrep(opts: GrepOpts): Promise<GrepMatch[]> {
     '--type',
     'md',
     opts.caseSensitive ? '-s' : '-i',
+    ...(opts._useFixedStrings ? ['--fixed-strings'] : []),
     '--',
     opts.pattern,
     opts.folder || '.',
@@ -64,9 +74,19 @@ export async function rgGrep(opts: GrepOpts): Promise<GrepMatch[]> {
       stderr += d.toString();
     });
     child.on('close', (code) => {
-      // rg: 0 = matches, 1 = no matches, 2 = error.
-      if (code === 0 || code === 1) resolve(matches.slice(0, opts.maxResults));
-      else reject(new Error(`ripgrep exited with code ${code}: ${stderr.trim()}`));
+      // rg: 0 = matches, 1 = no matches, 2 = error (most often an
+      // unparseable regex like `[unmatched`). On code 2 we retry once
+      // in fixed-strings mode so a bad regex degrades to a literal
+      // match instead of taking the whole grep_vault tool offline.
+      if (code === 0 || code === 1) {
+        resolve(matches.slice(0, opts.maxResults));
+        return;
+      }
+      if (code === 2 && !opts._useFixedStrings) {
+        rgGrep({ ...opts, _useFixedStrings: true }).then(resolve, reject);
+        return;
+      }
+      reject(new Error(`ripgrep exited with code ${code}: ${stderr.trim()}`));
     });
     child.on('error', (err) => reject(err));
   });
