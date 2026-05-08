@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { readFile, mkdir, rename as fsRename, writeFile } from 'node:fs/promises';
+import { readFile, mkdir, rename as fsRename, writeFile, copyFile, unlink } from 'node:fs/promises';
 import { existsSync, statSync } from 'node:fs';
 import { basename, dirname, extname, join } from 'node:path';
 import { parseNote } from '../../vault/parse.js';
@@ -144,17 +144,59 @@ export function notesRoute(deps: { paths: VaultPaths; repo?: IndexRepo; indexer?
     // Sync the in-file identity (frontmatter title + first H1) to the new
     // filename so renaming acts on the conceptual note, not just the path.
     // Only applies to .md files; other extensions pass through untouched.
+    //
+    // The previous implementation called writeFile(toAbs) directly inside a
+    // try/catch that swallowed any error. A mid-write disk-full or process
+    // interruption would leave the renamed note truncated, but the route
+    // would still report 200 success. Now: snapshot the original to
+    // .sanji/versions/ first (matches the discipline used by write_note),
+    // write to a temp path, then rename atomically. On failure, restore
+    // from the snapshot we just took and surface a 500 to the client.
     if (toValid.toLowerCase().endsWith('.md')) {
+      let snapshotPath: string | null = null;
       try {
         const source = await readFile(toAbs, 'utf8');
         const newTitle = titleFromFilename(toValid);
         const updated = syncTitleToFilename(source, newTitle);
         if (updated !== source) {
-          await writeFile(toAbs, updated, 'utf8');
+          // Snapshot first — this is identical to the path write_note
+          // uses for its versions trail. Filename is the relative path
+          // with `/` flattened to `__`, suffixed with the timestamp so
+          // versions for nested notes don't collide.
+          const versionsDir = join(deps.paths.vault, '.sanji', 'versions');
+          await mkdir(versionsDir, { recursive: true });
+          const stamp = `${toValid.replace(/[\/]/g, '__')}.${Date.now()}`;
+          snapshotPath = join(versionsDir, stamp);
+          await copyFile(toAbs, snapshotPath);
+
+          // Atomic temp + rename. If the writeFile or rename throws (e.g.
+          // ENOSPC mid-write), the catch below restores from the snapshot
+          // so the renamed note is never left partially written.
+          const tempPath = `${toAbs}.tmp.${Date.now()}`;
+          try {
+            await writeFile(tempPath, updated, 'utf8');
+            await fsRename(tempPath, toAbs);
+          } catch (writeErr) {
+            // Best-effort cleanup of the temp file; ignore failures here
+            // (the snapshot restore is what protects the user's data).
+            await unlink(tempPath).catch(() => {});
+            throw writeErr;
+          }
         }
-      } catch {
-        // Non-fatal — leave the body as-is and let the index pick up whatever
-        // title it can parse.
+      } catch (err) {
+        // Restore from snapshot if we made one — the file on disk after
+        // the rename earlier in this handler is still the user's note;
+        // we just may have truncated it.
+        if (snapshotPath) {
+          try { await copyFile(snapshotPath, toAbs); } catch { /* drop */ }
+        }
+        return c.json({
+          kind: 'api-error',
+          code: 'TITLE_SYNC_FAILED',
+          message: `Title sync after rename failed for ${toValid}: ${
+            (err as Error).message
+          }`,
+        }, 500);
       }
     }
 

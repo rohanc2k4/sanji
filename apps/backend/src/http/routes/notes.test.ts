@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import { Hono } from 'hono';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync, existsSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { notesRoute, syncTitleToFilename } from './notes.js';
@@ -209,6 +209,33 @@ describe('notes route', () => {
     const hits = repo.knnChunks(queryVec, 10);
     expect(hits.some((h) => h.notePath === 'b.md')).toBe(true);
     expect(hits.some((h) => h.notePath === 'a.md')).toBe(false);
+  });
+
+  it('POST /api/notes/rename snapshots the renamed note before title sync (atomic+versioned)', async () => {
+    // The title-sync step replaces an existing on-disk note. Without a
+    // snapshot + atomic temp+rename, a mid-write failure would leave a
+    // truncated file with no recovery path. We don't simulate the failure
+    // here (fs failure injection is awkward across platforms) — we
+    // verify the snapshot artifact exists, which is the user-facing
+    // recovery surface.
+    writeFileSync(join(dir, 'foo.md'), '---\ntitle: foo\n---\n\n# foo\n\nbody\n');
+    const { app, paths } = mount();
+
+    const res = await app.request('/api/notes/rename', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ from: 'foo.md', to: 'bar.md' }),
+    });
+    expect(res.status).toBe(200);
+    // Snapshot landed in .sanji/versions/ before the in-place title rewrite.
+    const versionsDir = join(paths.vault, '.sanji', 'versions');
+    expect(existsSync(versionsDir)).toBe(true);
+    const snapshots = readdirSync(versionsDir);
+    expect(snapshots.some((f) => f.startsWith('bar.md.'))).toBe(true);
+    // New file content reflects the title sync.
+    const updated = readFileSync(join(paths.vault, 'bar.md'), 'utf8');
+    expect(updated).toContain('title: bar');
+    expect(updated).toContain('# bar');
   });
 
   it('POST /api/notes/rename 404s when source missing, 409s when target exists', async () => {
