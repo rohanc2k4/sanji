@@ -30,7 +30,7 @@ describe('runMigrations', () => {
     const db = fresh();
     runMigrations(db); // must not throw
     const applied = (db.prepare('SELECT count(*) AS n FROM _migrations').get() as { n: bigint }).n;
-    expect(applied).toBe(4n);
+    expect(applied).toBe(5n);
   });
 
   it('FTS5 trigger keeps notes_fts in sync on insert / delete / update', () => {
