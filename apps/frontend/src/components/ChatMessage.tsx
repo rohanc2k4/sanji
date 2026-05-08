@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { SessionBreak } from '@/chat/SessionBreak';
 import type { Turn } from './applyEvent';
 
 export interface ChatMessageProps {
@@ -153,10 +154,12 @@ function renderRevealed(fullText: string, revealedWordCount: number): ReactNode[
 }
 
 export function ChatMessage({ turn, streaming, elapsedSec }: ChatMessageProps) {
-  // Auto-clear divider — Task 8 will swap this no-op for a real <SessionBreak>
-  // render. For now the variant exists in the union so tsc passes; the
-  // component renders nothing so existing chat behavior is untouched.
-  if (turn.role === 'session_break') return null;
+  // Auto-clear divider. Renders the SessionBreak component, which shows a
+  // horizontal rule with a "fresh thread" label. Trigger and message map
+  // 1:1 from the session_break turn variant.
+  if (turn.role === 'session_break') {
+    return <SessionBreak trigger={turn.trigger} message={turn.message} />;
+  }
   if (turn.role === 'user') {
     return (
       <div className="flex justify-end">
