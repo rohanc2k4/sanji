@@ -2,12 +2,39 @@ import { z } from 'zod';
 import { query, tool, createSdkMcpServer } from '@anthropic-ai/claude-agent-sdk';
 import type {
   ChatEvent,
+  ChatMessage,
   ChatOpts,
   ChatTool,
   ModelInfo,
   OneShotOpts,
   ProviderAdapter,
 } from '@sanji/shared';
+
+/**
+ * Render the prior conversation turns + the latest user message into a single
+ * prompt string for the Claude Agent SDK's `query()` API.
+ *
+ * Why this exists: SDK 0.1.77's `query({ prompt, ... })` accepts either a string
+ * or an `AsyncIterable<SDKUserMessage>`. The streaming variant is for follow-up
+ * user turns within a live session, NOT for replaying prior assistant turns —
+ * there is no `SDKAssistantMessage` input shape. So to preserve multi-turn
+ * memory on the subscription path we serialize the history as a structured
+ * text prefix to the latest user message.
+ *
+ * v0.2 todo: switch to a native multi-turn API if/when the Claude Agent SDK
+ * exposes one (e.g. `query({ messages: [...] })` or session resume).
+ */
+export function renderPromptForClaudeCodeSDK(messages: ChatMessage[]): string {
+  const lastUser = messages[messages.length - 1];
+  if (!lastUser) return '';
+  const prior = messages.slice(0, -1).filter((m) => m.role !== 'system');
+  if (prior.length === 0) return lastUser.content;
+
+  const turns = prior
+    .map((m) => `<turn role="${m.role}">\n${m.content}\n</turn>`)
+    .join('\n');
+  return `<conversation_history>\n${turns}\n</conversation_history>\n\n${lastUser.content}`;
+}
 
 const KNOWN_MODELS: ModelInfo[] = [
   { id: 'claude-opus-4-7', displayName: 'Claude Opus 4.7 (subscription)' },
@@ -16,20 +43,18 @@ const KNOWN_MODELS: ModelInfo[] = [
 ];
 
 export class ClaudeCodeSDKAdapter implements ProviderAdapter {
-  // NOTE: single-turn only. The underlying query() API takes one prompt, so
-  // prior conversation turns in opts.messages are dropped — only the most
-  // recent user message is forwarded.
+  // Multi-turn support: the SDK's query() prompt parameter is single-string or
+  // an AsyncIterable of user-only messages, so prior assistant turns cannot be
+  // replayed natively. We serialize history into the prompt via
+  // renderPromptForClaudeCodeSDK() so follow-ups resolve against earlier turns.
   async *chat(opts: ChatOpts): AsyncIterable<ChatEvent> {
-    const lastUser = [...opts.messages].reverse().find((m) => m.role === 'user');
-    if (!lastUser) {
-      yield { type: 'error', message: 'no user message' };
+    const last = opts.messages[opts.messages.length - 1];
+    if (!last || last.role !== 'user') {
+      yield { type: 'error', message: 'last message must be a user message' };
       return;
     }
-    if (opts.messages.length > 1) {
-      process.stderr.write(
-        'ClaudeCodeSDKAdapter: multi-turn messages dropped; only the last user message is forwarded.\n',
-      );
-    }
+
+    const promptText = renderPromptForClaudeCodeSDK(opts.messages);
 
     const hasTools = !!(opts.tools && opts.tools.length > 0 && opts.toolHandler);
     const mcpServers = hasTools
@@ -40,7 +65,7 @@ export class ClaudeCodeSDKAdapter implements ProviderAdapter {
       : undefined;
 
     const stream = query({
-      prompt: lastUser.content,
+      prompt: promptText,
       options: {
         model: opts.model,
         systemPrompt: opts.system,
