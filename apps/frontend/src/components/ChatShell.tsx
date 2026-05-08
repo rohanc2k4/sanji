@@ -8,8 +8,6 @@ import { Composer } from './Composer';
 import { EditorPanel } from './EditorPanel';
 import { SourcesSidebar } from './SourcesSidebar';
 import { ModelPicker } from '@/chat/ModelPicker';
-import { ContextBar } from '@/chat/ContextBar';
-import { getModelMetadata } from '@/chat/model-metadata';
 import { useChat } from '@/hooks/useChat';
 
 export interface ChatShellProps {
@@ -46,8 +44,6 @@ export function ChatShell({
     threshold: config?.chat?.autoClearThreshold,
     modelId: selectedModel,
   });
-  const activeModel = getModelMetadata(selectedModel);
-  const tokensUsed = chat.usage.inputTokens + chat.usage.outputTokens;
 
   // /clear from the composer skips the confirm dialog because typing
   // /clear is already an explicit, deliberate action — adding a confirm
@@ -96,7 +92,6 @@ export function ChatShell({
           >
             <RotateCcw />
           </Button>
-          <ContextBar tokensUsed={tokensUsed} contextWindow={activeModel.contextWindow} />
           <span className="font-mono">⌘K</span>
         </div>
       </header>
