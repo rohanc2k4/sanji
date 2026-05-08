@@ -40,6 +40,14 @@ export function chatRoute(opts: { deps: AgentDependencies; runAgent?: RunAgentFn
       ? { ...opts.deps, defaultModel: parsed.data.model }
       : opts.deps;
 
+    // TEMP diagnostic: log incoming history length + roles so we can verify
+    // conversation memory is reaching the backend. Remove after smoke confirms
+    // the regression has a real fix.
+    process.stderr.write(
+      `[chat] received ${parsed.data.messages.length} message(s): ` +
+        parsed.data.messages.map((m) => m.role).join(',') + '\n',
+    );
+
     return streamSSE(c, async (stream) => {
       try {
         for await (const ev of runAgent(deps, parsed.data.messages)) {
