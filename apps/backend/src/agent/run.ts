@@ -99,6 +99,21 @@ export async function* runAgent(
       yield { type: 'tool_call_end', id: event.id, tool };
       continue;
     }
+    if (event.type === 'message_stop') {
+      // Translate the adapter's terminal usage payload into a public
+      // usage_update event so the frontend can render context-window
+      // accounting without coupling to the adapter wire format. Adapters
+      // that don't surface usage (e.g. Claude Code SDK in some modes) emit
+      // message_stop with usage undefined; we forward zeroes and the
+      // frontend treats zero as unknown rather than erroring.
+      yield {
+        type: 'usage_update',
+        input_tokens: event.usage?.input ?? 0,
+        output_tokens: event.usage?.output ?? 0,
+      };
+      yield event;
+      continue;
+    }
     yield event;
   }
 

@@ -88,6 +88,7 @@ describe('runAgent', () => {
       'tool_result',
       'tool_call_end',
       'text_delta',
+      'usage_update',
       'message_stop',
     ]);
 
@@ -160,6 +161,47 @@ describe('runAgent', () => {
       )) { /* drain */ }
     } catch (err) { caught = err; }
     expect((caught as Error).message).toMatch(/last message must have role=user/i);
+  });
+
+  it('emits usage_update before message_stop, derived from adapter usage payload', async () => {
+    const adapter = fakeAdapter([
+      { type: 'text_delta', text: 'hi' },
+      { type: 'message_stop', usage: { input: 137, output: 42 } },
+    ]);
+    const out: ChatEvent[] = [];
+    await collectAll(
+      runAgent(
+        { adapter, registry: new Registry(), ctx: {} as ToolContext, skills: [ask], defaultModel: 'claude-sonnet-4-6' },
+        'hi',
+      ),
+      out,
+    );
+    const types = out.map((e) => e.type);
+    expect(types).toEqual(['text_delta', 'usage_update', 'message_stop']);
+    const usage = out[1] as Extract<ChatEvent, { type: 'usage_update' }>;
+    expect(usage.input_tokens).toBe(137);
+    expect(usage.output_tokens).toBe(42);
+  });
+
+  it('emits usage_update with zeroes when adapter omits usage on message_stop', async () => {
+    const adapter = fakeAdapter([
+      { type: 'text_delta', text: 'hi' },
+      { type: 'message_stop' },
+    ]);
+    const out: ChatEvent[] = [];
+    await collectAll(
+      runAgent(
+        { adapter, registry: new Registry(), ctx: {} as ToolContext, skills: [ask], defaultModel: 'claude-sonnet-4-6' },
+        'hi',
+      ),
+      out,
+    );
+    const usage = out.find((e) => e.type === 'usage_update') as
+      | Extract<ChatEvent, { type: 'usage_update' }>
+      | undefined;
+    expect(usage).toBeDefined();
+    expect(usage!.input_tokens).toBe(0);
+    expect(usage!.output_tokens).toBe(0);
   });
 
   it('errors when no /ask skill is loaded and the trigger is unknown', async () => {
