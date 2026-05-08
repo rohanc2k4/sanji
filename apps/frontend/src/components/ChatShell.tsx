@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import { PanelLeftClose, PanelLeftOpen, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
+import type { ConfigDto } from '@sanji/shared';
 import { Button } from '@/components/ui/button';
 import { ChatPane } from './ChatPane';
 import { Composer } from './Composer';
@@ -20,6 +21,7 @@ export interface ChatShellProps {
   onNoteSaved?: (path: string) => void;
   onNoteRenamed?: (from: string, to: string) => void;
   sidebarRefreshKey?: number;
+  config?: ConfigDto | null;
 }
 
 export function ChatShell({
@@ -31,14 +33,19 @@ export function ChatShell({
   onNoteSaved,
   onNoteRenamed,
   sidebarRefreshKey,
+  config,
 }: ChatShellProps) {
   const editorOpen = editorPath !== null;
-  const chat = useChat();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   // Sticky per chat-shell-instance. If a future "new conversation" reset
   // tears down ChatShell, the picker resets with it. Default matches the
   // hard-coded modelDefault from initialOnboardingState.
   const [selectedModel, setSelectedModel] = useState('claude-sonnet-4-6');
+  const chat = useChat({
+    idleMinutes: config?.chat?.autoClearIdleMinutes,
+    threshold: config?.chat?.autoClearThreshold,
+    modelId: selectedModel,
+  });
   const activeModel = getModelMetadata(selectedModel);
   const tokensUsed = chat.usage.inputTokens + chat.usage.outputTokens;
 

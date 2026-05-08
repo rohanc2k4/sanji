@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChatMessage } from '@sanji/shared';
 import { chatStream } from '@/api/chat';
-import { runIdleWatcher, type IdleWatcher } from '@/chat/auto-clear';
+import { runIdleWatcher, shouldClearOnThreshold, type IdleWatcher } from '@/chat/auto-clear';
+import { getModelMetadata } from '@/chat/model-metadata';
 import { sessionMessageFor, type SessionTrigger } from '@/chat/session-messages';
 import {
   applyEvent,
@@ -121,9 +122,21 @@ export interface UseChatOpts {
   /**
    * Minutes of no activity before the idle auto-clear fires. Defaults to 30
    * so consumers that don't pass anything still get the documented behavior.
-   * Task 6 will wire this from `config.chat.autoClearIdleMinutes`.
+   * Wired from `config.chat.autoClearIdleMinutes` by ChatShell.
    */
   idleMinutes?: number;
+  /**
+   * Fraction of the active model's contextWindow at which the threshold
+   * auto-clear fires. 0..1. Defaults to 0.75. Wired from
+   * `config.chat.autoClearThreshold` by ChatShell.
+   */
+  threshold?: number;
+  /**
+   * Active model id from the picker. Used to look up contextWindow when
+   * checking the threshold against accumulated usage. Defaults to the
+   * v0.1 sonnet id so consumers that don't pass it still behave sensibly.
+   */
+  modelId?: string;
 }
 
 export function useChat(opts?: UseChatOpts): UseChatResult {
@@ -153,6 +166,18 @@ export function useChat(opts?: UseChatOpts): UseChatResult {
   const pendingClearRef = useRef<SessionTrigger | null>(null);
   const idleWatcherRef = useRef<IdleWatcher | null>(null);
   useEffect(() => { streamingRef.current = streaming; }, [streaming]);
+
+  // Threshold + active model live in refs so the setUsage callback (which
+  // captures only its initial closure) reads the current values rather than
+  // a stale snapshot when the picker or config changes mid-conversation.
+  const thresholdRef = useRef<number>(opts?.threshold ?? 0.75);
+  const modelIdRef = useRef<string>(opts?.modelId ?? 'claude-sonnet-4-6');
+  useEffect(() => {
+    thresholdRef.current = opts?.threshold ?? 0.75;
+  }, [opts?.threshold]);
+  useEffect(() => {
+    modelIdRef.current = opts?.modelId ?? 'claude-sonnet-4-6';
+  }, [opts?.modelId]);
 
   // Tick elapsedSec every 250ms while streaming. Cleared on stream close so
   // the value freezes on the last sample rather than continuing to climb.
@@ -204,7 +229,20 @@ export function useChat(opts?: UseChatOpts): UseChatResult {
             // the running sum (which is what the context bar wants —
             // "what's the model's prompt size when I send the next turn"
             // grows monotonically until clear()).
-            setUsage((u) => applyUsageUpdate(u, ev));
+            setUsage((u) => {
+              const next = applyUsageUpdate(u, ev);
+              const cw = getModelMetadata(modelIdRef.current).contextWindow;
+              if (shouldClearOnThreshold(next, cw, thresholdRef.current)) {
+                // Stash for the SSE done handler. If it's already set
+                // (e.g. idle fired earlier), keep the earlier value;
+                // either trigger lands the same divider semantically
+                // and we don't want to overwrite the cause.
+                if (pendingClearRef.current === null) {
+                  pendingClearRef.current = 'threshold';
+                }
+              }
+              return next;
+            });
             continue;
           }
           setTurns((prev) => applyEvent(prev, ev));

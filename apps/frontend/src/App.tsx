@@ -8,18 +8,21 @@ import { IngestStatusPanel } from './components/IngestStatusPanel';
 import { applyIngestEvent, type StatusRow } from './components/ingestStatus';
 import { ingestFile, ingestText } from './api/ingest';
 import { getConfig } from './api/config';
-import { isApiError } from '@sanji/shared';
+import { isApiError, type ConfigDto } from '@sanji/shared';
 
 type Boot = 'loading' | 'onboarding' | 'ready';
 
 export default function App() {
   const [boot, setBoot] = useState<Boot>('loading');
+  const [config, setConfig] = useState<ConfigDto | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     getConfig()
-      .then(() => {
-        if (!cancelled) setBoot('ready');
+      .then((cfg) => {
+        if (cancelled) return;
+        setConfig(cfg);
+        setBoot('ready');
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -31,11 +34,21 @@ export default function App() {
     };
   }, []);
 
+  async function handleOnboardingComplete() {
+    try {
+      const cfg = await getConfig();
+      setConfig(cfg);
+    } catch {
+      // Fall through with null config; useChat's defaults take over.
+    }
+    setBoot('ready');
+  }
+
   return (
     <>
       {boot === 'loading' && <Loading />}
-      {boot === 'onboarding' && <OnboardingFlow onComplete={() => setBoot('ready')} />}
-      {boot === 'ready' && <ChatRoot />}
+      {boot === 'onboarding' && <OnboardingFlow onComplete={handleOnboardingComplete} />}
+      {boot === 'ready' && <ChatRoot config={config} />}
       <Toaster />
     </>
   );
@@ -49,7 +62,7 @@ function Loading() {
   );
 }
 
-function ChatRoot() {
+function ChatRoot({ config }: { config: ConfigDto | null }) {
   const [editorPath, setEditorPath] = useState<string | null>(null);
   const [rows, setRows] = useState<StatusRow[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
@@ -118,6 +131,7 @@ function ChatRoot() {
         onNoteSaved={bumpSidebar}
         onNoteRenamed={handleRenamed}
         sidebarRefreshKey={sidebarRefreshKey}
+        config={config}
       />
       <IngestStatusPanel
         rows={rows}

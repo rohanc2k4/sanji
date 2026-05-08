@@ -1,6 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import type { Turn } from '@/components/applyEvent';
 import { applyUsageUpdate, computeIdleMs, makeSessionBreakTurn, turnsToHistory, ZERO_USAGE } from './useChat';
+import { shouldClearOnThreshold } from '@/chat/auto-clear';
+
+describe('threshold trigger pure-reducer integration', () => {
+  it('combining applyUsageUpdate + shouldClearOnThreshold flags when usage crosses', () => {
+    const before = { inputTokens: 140_000, outputTokens: 0 };
+    const after = applyUsageUpdate(before, { input_tokens: 11_000, output_tokens: 0 });
+    expect(shouldClearOnThreshold(after, 200_000, 0.75)).toBe(true);
+  });
+
+  it('does not flag when usage stays below the line', () => {
+    const before = { inputTokens: 80_000, outputTokens: 0 };
+    const after = applyUsageUpdate(before, { input_tokens: 5_000, output_tokens: 0 });
+    expect(shouldClearOnThreshold(after, 200_000, 0.75)).toBe(false);
+  });
+});
 
 describe('computeIdleMs', () => {
   it('converts minutes to milliseconds', () => {
