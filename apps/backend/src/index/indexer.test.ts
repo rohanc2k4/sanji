@@ -156,4 +156,60 @@ describe('Indexer', () => {
     );
     expect(counts2).toBe(counts1);
   });
+
+  it('skips re-indexing when mtime AND schema version both match', async () => {
+    const { db, ix } = newIndexer();
+    await ix.indexAll(FIXTURE_VAULT);
+    const before = db.prepare('SELECT path, index_schema_version FROM notes').all() as Array<{
+      path: string; index_schema_version: string | null;
+    }>;
+    expect(before.every((r) => r.index_schema_version !== null)).toBe(true);
+    const stats = await ix.indexAll(FIXTURE_VAULT);
+    expect(stats.notesIndexed).toBe(0);
+    expect(stats.notesSkipped).toBe(before.length);
+  });
+
+  it('forces a re-index when contextual_retrieval is flipped on after the initial index', async () => {
+    // Same vault dir + db, different Indexer instance, different
+    // blurbLlm setting. The old rows have index_schema_version='v1-plain';
+    // the new run wants 'v1-ctx'. Mismatch — every note re-indexes even
+    // though no source bytes changed.
+    const { dir, cleanup } = makeTmpDir();
+    cleanups.push(cleanup);
+    const db = openDb(join(dir, 'index.db'));
+    runMigrations(db);
+    const plain = new Indexer(db, new FakeEmbedder(), {
+      chunkSizeTokens: 100, chunkOverlapTokens: 10,
+    });
+    await plain.indexAll(FIXTURE_VAULT);
+    const v1 = (db.prepare('SELECT index_schema_version AS v FROM notes LIMIT 1').get() as { v: string | null }).v;
+    expect(v1).toMatch(/-plain$/);
+
+    const ctxLlm = async () => 'context blurb';
+    const ctx = new Indexer(db, new FakeEmbedder(), {
+      chunkSizeTokens: 100, chunkOverlapTokens: 10, blurbLlm: ctxLlm,
+    });
+    const stats = await ctx.indexAll(FIXTURE_VAULT);
+    expect(stats.notesSkipped).toBe(0);
+    expect(stats.notesIndexed).toBeGreaterThan(0);
+    const v2 = (db.prepare('SELECT index_schema_version AS v FROM notes LIMIT 1').get() as { v: string | null }).v;
+    expect(v2).toMatch(/-ctx$/);
+  });
+
+  it('forces a re-index for legacy rows whose index_schema_version is null', async () => {
+    // Simulates a fresh upgrade: the row exists from before migration 005
+    // ran (index_schema_version is null after the column add). Indexer
+    // must NOT skip on mtime alone; it should re-index and stamp the
+    // version column.
+    const { db, ix } = newIndexer();
+    await ix.indexAll(FIXTURE_VAULT);
+    db.prepare('UPDATE notes SET index_schema_version = NULL').run();
+    const stats = await ix.indexAll(FIXTURE_VAULT);
+    expect(stats.notesSkipped).toBe(0);
+    expect(stats.notesIndexed).toBeGreaterThan(0);
+    const remaining = (db
+      .prepare('SELECT count(*) AS n FROM notes WHERE index_schema_version IS NULL')
+      .get() as { n: bigint }).n;
+    expect(Number(remaining)).toBe(0);
+  });
 });

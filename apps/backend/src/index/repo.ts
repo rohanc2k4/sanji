@@ -71,6 +71,27 @@ export class IndexRepo {
     this.db.prepare('DELETE FROM notes WHERE path = ?').run(path);
   }
 
+  /**
+   * Read the index_schema_version that was stored when this note was last
+   * indexed. Indexer compares this against its current version and forces
+   * a reindex when they don't match — e.g. the user flipped the
+   * [ingestion] contextual_retrieval flag, which changes how chunks get
+   * embedded but does not change file mtimes. Returns null when the
+   * column was never set (legacy rows from before migration 005).
+   */
+  getNoteIndexVersion(path: string): string | null {
+    const row = this.db
+      .prepare('SELECT index_schema_version AS v FROM notes WHERE path = ?')
+      .get(path) as { v: string | null } | undefined;
+    return row?.v ?? null;
+  }
+
+  setNoteIndexVersion(path: string, version: string): void {
+    this.db
+      .prepare('UPDATE notes SET index_schema_version = ? WHERE path = ?')
+      .run(version, path);
+  }
+
   allNotePaths(): string[] {
     return (this.db.prepare('SELECT path FROM notes').all() as Array<{ path: string }>).map(
       (r) => r.path,

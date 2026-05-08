@@ -42,6 +42,21 @@ export interface IndexFileResult {
 
 const SKIP_DIRS = new Set(['.sanji', '.git', 'node_modules']);
 
+/**
+ * Base version tag for the indexer's chunk/embedding schema. Bump this
+ * when the chunking, embedding-input formatter, or any other write-time
+ * decision changes — every existing note will be re-indexed on the next
+ * pass even if its mtime hasn't changed. The contextual-retrieval flag
+ * is baked into the effective version below so a flag flip is treated
+ * as a schema change too (the chunk's `context_text` and the bytes
+ * embedded both change with the flag).
+ */
+const INDEX_SCHEMA_BASE = 'v1';
+
+function effectiveSchemaVersion(contextualRetrievalEnabled: boolean): string {
+  return `${INDEX_SCHEMA_BASE}-${contextualRetrievalEnabled ? 'ctx' : 'plain'}`;
+}
+
 export class Indexer {
   private repo: IndexRepo;
 
@@ -104,8 +119,18 @@ export class Indexer {
     const abs = join(vaultRoot, relPath);
     const st = await stat(abs);
     const existing = this.repo.getNote(relPath);
+    // Skip only when BOTH mtime AND the indexer's schema version match.
+    // The schema version is baked from contextual_retrieval state, so
+    // toggling that config flag forces every note through the chunk +
+    // embed path on the next pass even though the source bytes haven't
+    // changed. Legacy rows (pre-migration-005) report null, which never
+    // matches and forces a one-time reindex — exactly what we want.
+    const currentSchemaVersion = effectiveSchemaVersion(this.opts.blurbLlm !== undefined);
     if (existing && existing.mtimeMs === st.mtimeMs) {
-      return { chunksIndexed: 0, skipped: true, blurbsAttempted: 0, blurbsFailed: 0 };
+      const storedVersion = this.repo.getNoteIndexVersion(relPath);
+      if (storedVersion === currentSchemaVersion) {
+        return { chunksIndexed: 0, skipped: true, blurbsAttempted: 0, blurbsFailed: 0 };
+      }
     }
     const source = await readFile(abs, 'utf8');
     const { note, wikilinks } = parseNote(relPath, source, st.mtimeMs);
@@ -186,6 +211,7 @@ export class Indexer {
       }),
     );
     this.repo.replaceChunksForNote(relPath, upserts);
+    this.repo.setNoteIndexVersion(relPath, currentSchemaVersion);
     return { chunksIndexed: upserts.length, skipped: false, blurbsAttempted, blurbsFailed };
   }
 
