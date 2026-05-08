@@ -9,16 +9,21 @@
 // effectively a three-row dropdown, and lines up with the picker contract
 // (aria-label="Model", combobox role) used by callers.
 
+import { modelsByProvider } from './model-metadata';
+
 export interface ModelOption {
   id: string;
   label: string;
 }
 
-export const MODEL_OPTIONS: readonly ModelOption[] = [
-  { id: 'claude-opus-4-7', label: 'Opus 4.7' },
-  { id: 'claude-sonnet-4-6', label: 'Sonnet 4.6' },
-  { id: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5' },
-] as const;
+// v0.1: only the Anthropic adapter is wired, so the picker filters to
+// provider='anthropic'. v0.2 will either drop the filter or add a
+// provider sub-grouping (e.g. an optgroup per provider) once Gemini /
+// OpenAI adapters land.
+export const MODEL_OPTIONS: readonly ModelOption[] = modelsByProvider('anthropic').map((m) => ({
+  id: m.id,
+  label: m.displayName,
+}));
 
 export interface ModelPickerProps {
   value: string;

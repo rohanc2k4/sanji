@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Turn } from '@/components/applyEvent';
-import { turnsToHistory } from './useChat';
+import { applyUsageUpdate, turnsToHistory, ZERO_USAGE } from './useChat';
 
 describe('turnsToHistory', () => {
   it('flattens user + assistant turns and appends the latest user message', () => {
@@ -35,5 +35,35 @@ describe('turnsToHistory', () => {
     expect(turnsToHistory([], 'first message')).toEqual([
       { role: 'user', content: 'first message' },
     ]);
+  });
+});
+
+describe('applyUsageUpdate', () => {
+  it('starts from zero and adds the first turn', () => {
+    expect(applyUsageUpdate(ZERO_USAGE, { input_tokens: 137, output_tokens: 42 })).toEqual({
+      inputTokens: 137,
+      outputTokens: 42,
+    });
+  });
+
+  it('accumulates across multiple turns', () => {
+    let usage = ZERO_USAGE;
+    usage = applyUsageUpdate(usage, { input_tokens: 100, output_tokens: 50 });
+    usage = applyUsageUpdate(usage, { input_tokens: 200, output_tokens: 75 });
+    usage = applyUsageUpdate(usage, { input_tokens: 50, output_tokens: 25 });
+    expect(usage).toEqual({ inputTokens: 350, outputTokens: 150 });
+  });
+
+  it('treats missing fields as zero (adapter reports no usage)', () => {
+    const usage = applyUsageUpdate({ inputTokens: 10, outputTokens: 5 }, {});
+    expect(usage).toEqual({ inputTokens: 10, outputTokens: 5 });
+  });
+
+  it('zero-tokens turn does not move the counter', () => {
+    const usage = applyUsageUpdate(
+      { inputTokens: 100, outputTokens: 50 },
+      { input_tokens: 0, output_tokens: 0 },
+    );
+    expect(usage).toEqual({ inputTokens: 100, outputTokens: 50 });
   });
 });

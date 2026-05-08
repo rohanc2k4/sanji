@@ -1,11 +1,14 @@
-import { useState } from 'react';
-import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { useCallback, useState } from 'react';
+import { PanelLeftClose, PanelLeftOpen, RotateCcw } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { ChatPane } from './ChatPane';
 import { Composer } from './Composer';
 import { EditorPanel } from './EditorPanel';
 import { SourcesSidebar } from './SourcesSidebar';
 import { ModelPicker } from '@/chat/ModelPicker';
+import { ContextBar } from '@/chat/ContextBar';
+import { getModelMetadata } from '@/chat/model-metadata';
 import { useChat } from '@/hooks/useChat';
 
 export interface ChatShellProps {
@@ -36,6 +39,26 @@ export function ChatShell({
   // tears down ChatShell, the picker resets with it. Default matches the
   // hard-coded modelDefault from initialOnboardingState.
   const [selectedModel, setSelectedModel] = useState('claude-sonnet-4-6');
+  const activeModel = getModelMetadata(selectedModel);
+  const tokensUsed = chat.usage.inputTokens + chat.usage.outputTokens;
+
+  // /clear from the composer skips the confirm dialog because typing
+  // /clear is already an explicit, deliberate action — adding a confirm
+  // would feel like the app distrusts the user. The button click does
+  // confirm because a stray click is much cheaper to register than
+  // typing a 6-character slash.
+  const handleClearFromComposer = useCallback(() => {
+    chat.clear();
+    toast.success('Conversation cleared.');
+  }, [chat]);
+
+  const handleClearClick = useCallback(() => {
+    if (chat.turns.length === 0) return; // no-op on empty conversation
+    const ok = window.confirm('Clear conversation? This cannot be undone.');
+    if (!ok) return;
+    chat.clear();
+    toast.success('Conversation cleared.');
+  }, [chat]);
 
   return (
     <div className="flex h-screen w-screen flex-col bg-background font-sans text-foreground">
@@ -56,6 +79,17 @@ export function ChatShell({
         </div>
         <div className="flex items-center gap-3 text-muted-foreground/60">
           <ModelPicker value={selectedModel} onChange={setSelectedModel} />
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            onClick={handleClearClick}
+            disabled={chat.turns.length === 0}
+            aria-label="Clear conversation"
+            title="Clear conversation"
+          >
+            <RotateCcw />
+          </Button>
+          <ContextBar tokensUsed={tokensUsed} contextWindow={activeModel.contextWindow} />
           <span className="font-mono">⌘K</span>
         </div>
       </header>
@@ -94,6 +128,7 @@ export function ChatShell({
             onSubmit={chat.send}
             onAbort={chat.abort}
             streaming={chat.streaming}
+            onClear={handleClearFromComposer}
           />
         </main>
 

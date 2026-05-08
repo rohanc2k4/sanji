@@ -11,14 +11,37 @@ export interface ComposerProps {
   // down so each send fires with the picker's current value. The Composer
   // no longer owns the model selector itself.
   model: string;
+  /**
+   * Called when the composer detects the /clear slash. Wired in ChatShell
+   * to useChat.clear() + a confirmation toast. Optional so that surfaces
+   * which want plain-text-only input (none today) can omit it; if absent,
+   * /clear falls through to a normal message send.
+   */
+  onClear?: () => void;
 }
 
-export function Composer({ onSubmit, onAbort, streaming, model }: ComposerProps) {
+/**
+ * Exact-match /clear detector. Only matches a single `/clear` token (with
+ * optional surrounding whitespace) so users can still ask "what does
+ * /clear do?" or paste markdown that mentions /clear without nuking the
+ * conversation. v0.1 keeps the surface tight; no /clear all, no /clear
+ * history.
+ */
+export function isClearCommand(text: string): boolean {
+  return /^\s*\/clear\s*$/.test(text);
+}
+
+export function Composer({ onSubmit, onAbort, streaming, model, onClear }: ComposerProps) {
   const [text, setText] = useState('');
 
   function tryFire() {
     const trimmed = text.trim();
     if (!trimmed || streaming) return;
+    if (onClear && isClearCommand(trimmed)) {
+      onClear();
+      setText('');
+      return;
+    }
     onSubmit(trimmed, model);
     setText('');
   }

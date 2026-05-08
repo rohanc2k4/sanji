@@ -31,6 +31,31 @@ export function turnsToHistory(turns: Turn[], latestUserMessage: string): ChatMe
   return history;
 }
 
+export interface UsageState {
+  /** Sum of input_tokens reported across all completed turns this conversation. */
+  inputTokens: number;
+  /** Sum of output_tokens reported across all completed turns this conversation. */
+  outputTokens: number;
+}
+
+export const ZERO_USAGE: UsageState = { inputTokens: 0, outputTokens: 0 };
+
+/**
+ * Pure reducer for the accumulated-usage state. Exported so the hook's
+ * accumulation behavior is unit-testable without standing up a React
+ * renderer (this codebase doesn't pull in @testing-library/react). The
+ * hook calls this from its setUsage callback on every usage_update event.
+ */
+export function applyUsageUpdate(
+  prev: UsageState,
+  evt: { input_tokens?: number; output_tokens?: number },
+): UsageState {
+  return {
+    inputTokens: prev.inputTokens + (evt.input_tokens ?? 0),
+    outputTokens: prev.outputTokens + (evt.output_tokens ?? 0),
+  };
+}
+
 export interface UseChatResult {
   turns: Turn[];
   streaming: boolean;
@@ -41,14 +66,23 @@ export interface UseChatResult {
    * activity status line; no fake ETA is computed.
    */
   elapsedSec: number;
+  /** Accumulated token usage across all turns this conversation. */
+  usage: UsageState;
   send: (message: string, model?: string) => void;
   abort: () => void;
+  /**
+   * Wipe the conversation: reset turns + usage + abort any in-flight send.
+   * Used by the /clear slash and the header Clear button. The token counter
+   * goes back to 0; the next send starts a fresh conversation.
+   */
+  clear: () => void;
 }
 
 export function useChat(): UseChatResult {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [streaming, setStreaming] = useState(false);
   const [elapsedSec, setElapsedSec] = useState(0);
+  const [usage, setUsage] = useState<UsageState>(ZERO_USAGE);
   const startedAtRef = useRef<number | null>(null);
   const ctrlRef = useRef<AbortController | null>(null);
   // Mirror of `turns` for synchronous reads inside send(). useState's
@@ -99,6 +133,15 @@ export function useChat(): UseChatResult {
     (async () => {
       try {
         for await (const ev of chatStream({ messages: historyToSend, model }, ctrl.signal)) {
+          if (ev.type === 'usage_update') {
+            // Accumulate across turns. The backend reports this turn's
+            // input + output tokens; the conversation-level totals are
+            // the running sum (which is what the context bar wants —
+            // "what's the model's prompt size when I send the next turn"
+            // grows monotonically until clear()).
+            setUsage((u) => applyUsageUpdate(u, ev));
+            continue;
+          }
           setTurns((prev) => applyEvent(prev, ev));
         }
       } catch (err) {
@@ -124,5 +167,20 @@ export function useChat(): UseChatResult {
     setStreaming(false);
   }, []);
 
-  return { turns, streaming, elapsedSec, send, abort };
+  const clear = useCallback(() => {
+    // Cancel any in-flight stream first so its finally block doesn't race
+    // with the reset and re-flip streaming back on. Then wipe state in the
+    // same render: empty turns, zeroed usage, frozen elapsed counter.
+    if (ctrlRef.current) {
+      ctrlRef.current.abort();
+      ctrlRef.current = null;
+    }
+    startedAtRef.current = null;
+    setTurns([]);
+    setUsage(ZERO_USAGE);
+    setElapsedSec(0);
+    setStreaming(false);
+  }, []);
+
+  return { turns, streaming, elapsedSec, usage, send, abort, clear };
 }
