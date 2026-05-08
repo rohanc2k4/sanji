@@ -117,7 +117,30 @@ function ChatRoot({ config }: { config: ConfigDto | null }) {
   }
 
   function cancelRow(fileId: string) {
-    ctrls.current.get(fileId)?.abort();
+    const ctrl = ctrls.current.get(fileId);
+    if (!ctrl) return;
+    // Local terminal state: when we abort the fetch, the SSE reader stops
+    // reading from the response body, so the backend's "Cancelled by user"
+    // error event never reaches the client. Without this synthesized
+    // local event, the row stays at 'extracting' or 'rewriting' with a
+    // forever spinner. The synthesized event's shape mirrors the
+    // backend's cancellation error so applyIngestEvent treats the row
+    // identically (terminal phase: 'error', errorMessage shown to user).
+    ctrl.abort();
+    ctrls.current.delete(fileId);
+    setRows((prev) => {
+      const row = prev.find((r) => r.fileId === fileId);
+      if (!row) return prev;
+      // Already terminal: don't overwrite.
+      if (row.phase === 'done' || row.phase === 'skipped' || row.phase === 'error') {
+        return prev;
+      }
+      return prev.map((r) =>
+        r.fileId === fileId
+          ? { ...r, phase: 'error' as const, errorMessage: 'Cancelled by user.' }
+          : r,
+      );
+    });
   }
 
   return (

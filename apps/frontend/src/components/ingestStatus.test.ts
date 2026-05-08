@@ -73,6 +73,29 @@ describe('applyIngestEvent', () => {
     expect(rows).toHaveLength(1);
   });
 
+  it('terminates a streaming row when an error event arrives during rewriting (cancel-by-user contract)', () => {
+    // App.tsx synthesizes a local error event when the user cancels an
+    // in-flight ingest, because aborting the fetch closes the SSE reader
+    // before the backend's "Cancelled by user" event reaches the client.
+    // The synthesized event MUST flow through applyIngestEvent the same
+    // way a backend error would, otherwise the row sits at 'rewriting'
+    // forever with a spinner.
+    let rows: StatusRow[] = [];
+    rows = applyIngestEvent(rows, { kind: 'queued', fileId: 'a', sourceName: 'p.pdf' });
+    rows = applyIngestEvent(rows, { kind: 'extracting', fileId: 'a', sourceName: 'p.pdf' });
+    rows = applyIngestEvent(rows, { kind: 'rewriting', fileId: 'a', sourceName: 'p.pdf' });
+    expect(rows[0]?.phase).toBe('rewriting');
+    rows = applyIngestEvent(rows, {
+      kind: 'error',
+      fileId: 'a',
+      sourceName: 'p.pdf',
+      phase: 'rewrite',
+      message: 'Cancelled by user.',
+    });
+    expect(rows[0]?.phase).toBe('error');
+    expect(rows[0]?.errorMessage).toBe('Cancelled by user.');
+  });
+
   it('stamps startedAt on the first working-phase event and preserves it through later phases', () => {
     let rows = applyIngestEvent([], { kind: 'queued', fileId: 'a', sourceName: 'p.pdf' });
     expect(rows[0]?.startedAt).toBeUndefined();
