@@ -14,9 +14,15 @@ describe('built-in skills', () => {
     expect(triggers).toEqual(['/ask', '/connect', '/ingest', '/recap']);
 
     const ask = skills.find((s) => s.trigger === '/ask')!;
-    expect(ask.tools).toContain('search_vault');
-    expect(ask.tools).toContain('semantic_search');
+    // RAG fallback tools (hybrid_search, search_vault, semantic_search) temporarily
+    // removed to evaluate pure agentic search behavior. Restore by re-listing them
+    // in apps/backend/src/skills/builtin/ask.md frontmatter.
+    expect(ask.tools).toContain('list_vault');
+    expect(ask.tools).toContain('grep_vault');
     expect(ask.tools).toContain('read_note');
+    expect(ask.tools).not.toContain('hybrid_search');
+    expect(ask.tools).not.toContain('semantic_search');
+    expect(ask.tools).not.toContain('search_vault');
 
     const recap = skills.find((s) => s.trigger === '/recap')!;
     expect(recap.tools).toContain('read_note');
