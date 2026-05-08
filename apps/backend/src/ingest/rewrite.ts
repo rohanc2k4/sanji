@@ -158,11 +158,19 @@ export async function rewrite(
 ): Promise<RewriteResult> {
   const userPrompt = buildPrompt(input);
 
+  // Ingest rewrites can produce 5-8k tokens of structured markdown for a
+  // long PDF; the adapter default of 1024 truncates mid-body and the
+  // parser may still accept the (now-incomplete) output because the
+  // leading frontmatter is intact. 8000 leaves headroom for any
+  // single-document rewrite without bumping into per-request cost.
+  const INGEST_MAX_TOKENS = 8000;
+
   const first = await runSkillWithUsage({
     skill: deps.ingestSkill,
     input: userPrompt,
     adapter: deps.adapter,
     model: deps.model,
+    maxTokens: INGEST_MAX_TOKENS,
     abortSignal: input.abortSignal,
   });
 
@@ -181,6 +189,7 @@ export async function rewrite(
       input: retryInput,
       adapter: deps.adapter,
       model: deps.model,
+      maxTokens: INGEST_MAX_TOKENS,
       abortSignal: input.abortSignal,
     });
     try {

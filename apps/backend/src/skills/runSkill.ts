@@ -7,6 +7,15 @@ export interface RunSkillOptions {
   adapter: ProviderAdapter;
   model: string;
   abortSignal?: AbortSignal;
+  /**
+   * Cap on output tokens for this one-shot skill call. Forwarded to the
+   * adapter as ChatOpts.maxTokens. AnthropicApiAdapter.chat() defaults to
+   * 1024 if unspecified, which is fine for short skill outputs but
+   * truncates ingest rewrites mid-content; the parser may still find the
+   * leading frontmatter and accept the truncated body. Ingest passes
+   * 8000; other callers can omit and accept the adapter default.
+   */
+  maxTokens?: number;
 }
 
 export interface RunSkillResult {
@@ -30,6 +39,7 @@ export async function runSkillWithUsage(opts: RunSkillOptions): Promise<RunSkill
     model: opts.model,
     system: opts.skill.body,
     messages: [{ role: 'user', content: opts.input }],
+    ...(opts.maxTokens !== undefined ? { maxTokens: opts.maxTokens } : {}),
     ...(opts.abortSignal ? { signal: opts.abortSignal } : {}),
   });
   for await (const ev of stream as AsyncIterable<ChatEvent>) {

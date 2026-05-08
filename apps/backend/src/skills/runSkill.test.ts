@@ -82,6 +82,32 @@ describe('runSkill', () => {
     ).rejects.toThrow(/abort/i);
   });
 
+  it('forwards maxTokens to the adapter when provided', async () => {
+    // Without this, the AnthropicApiAdapter default of 1024 truncates
+    // multi-thousand-token ingest rewrites mid-body. Ingest passes 8000;
+    // this test pins the propagation contract.
+    const adapter = new StubAdapter(['ok']);
+    await runSkill({
+      skill,
+      input: 'long doc content',
+      adapter,
+      model: 'claude-sonnet-4-6',
+      maxTokens: 8000,
+    });
+    expect(adapter.lastOpts?.maxTokens).toBe(8000);
+  });
+
+  it('omits maxTokens when not provided so adapters apply their default', async () => {
+    const adapter = new StubAdapter(['ok']);
+    await runSkill({
+      skill,
+      input: 'short',
+      adapter,
+      model: 'claude-sonnet-4-6',
+    });
+    expect(adapter.lastOpts?.maxTokens).toBeUndefined();
+  });
+
   it('runSkillWithUsage returns aggregated text + the usage block', async () => {
     const adapter = new StubAdapter(['hi ', 'there']);
     const r = await runSkillWithUsage({
