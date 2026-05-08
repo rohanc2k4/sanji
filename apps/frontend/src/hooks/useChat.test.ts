@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Turn } from '@/components/applyEvent';
-import { applyUsageUpdate, turnsToHistory, ZERO_USAGE } from './useChat';
+import { applyUsageUpdate, makeSessionBreakTurn, turnsToHistory, ZERO_USAGE } from './useChat';
 
 describe('turnsToHistory', () => {
   it('flattens user + assistant turns and appends the latest user message', () => {
@@ -80,5 +80,29 @@ describe('applyUsageUpdate', () => {
       { input_tokens: 0, output_tokens: 0 },
     );
     expect(usage).toEqual({ inputTokens: 100, outputTokens: 50 });
+  });
+});
+
+describe('makeSessionBreakTurn', () => {
+  it('produces a manual session break with null message', () => {
+    const t = makeSessionBreakTurn('manual', new Date('2026-05-08T12:00:00Z'));
+    expect(t.role).toBe('session_break');
+    if (t.role !== 'session_break') return;
+    expect(t.trigger).toBe('manual');
+    expect(t.message).toBeNull();
+  });
+  it('produces an idle session break with the cat-voiced idle message', () => {
+    const t = makeSessionBreakTurn('idle', new Date());
+    expect(t.role).toBe('session_break');
+    if (t.role !== 'session_break') return;
+    expect(t.trigger).toBe('idle');
+    expect(t.message).toContain('purr-haps');
+  });
+  it('produces a threshold session break with the cat-voiced threshold message', () => {
+    const t = makeSessionBreakTurn('threshold', new Date());
+    expect(t.role).toBe('session_break');
+    if (t.role !== 'session_break') return;
+    expect(t.trigger).toBe('threshold');
+    expect(t.message).toContain('paws');
   });
 });

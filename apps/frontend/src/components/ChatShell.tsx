@@ -48,7 +48,7 @@ export function ChatShell({
   // confirm because a stray click is much cheaper to register than
   // typing a 6-character slash.
   const handleClearFromComposer = useCallback(() => {
-    chat.clear();
+    chat.clear({ trigger: 'manual' });
     toast.success('Conversation cleared.');
   }, [chat]);
 
@@ -56,7 +56,7 @@ export function ChatShell({
     if (chat.turns.length === 0) return; // no-op on empty conversation
     const ok = window.confirm('Clear conversation? This cannot be undone.');
     if (!ok) return;
-    chat.clear();
+    chat.clear({ trigger: 'manual' });
     toast.success('Conversation cleared.');
   }, [chat]);
 

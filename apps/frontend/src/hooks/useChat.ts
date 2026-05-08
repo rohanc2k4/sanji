@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChatMessage } from '@sanji/shared';
 import { chatStream } from '@/api/chat';
+import { sessionMessageFor, type SessionTrigger } from '@/chat/session-messages';
 import {
   applyEvent,
   makeAssistantTurn,
@@ -30,6 +31,21 @@ export function turnsToHistory(turns: Turn[], latestUserMessage: string): ChatMe
   }
   history.push({ role: 'user', content: latestUserMessage });
   return history;
+}
+
+/**
+ * Build the session_break turn produced by clear() (and, in later tasks, by
+ * the idle / threshold auto-clear effects). Lives here alongside
+ * makeAssistantTurn so all turn-construction helpers are colocated; the
+ * pure cat-voiced messages live in `@/chat/session-messages`.
+ */
+export function makeSessionBreakTurn(trigger: SessionTrigger, timestamp: Date): Turn {
+  return {
+    role: 'session_break',
+    trigger,
+    message: sessionMessageFor(trigger),
+    timestamp,
+  };
 }
 
 export interface UsageState {
@@ -72,11 +88,15 @@ export interface UseChatResult {
   send: (message: string, model?: string) => void;
   abort: () => void;
   /**
-   * Wipe the conversation: reset turns + usage + abort any in-flight send.
-   * Used by the /clear slash and the header Clear button. The token counter
-   * goes back to 0; the next send starts a fresh conversation.
+   * Wipe the conversation: reset turns + usage + abort any in-flight send,
+   * then drop in a single `session_break` turn tagged with the trigger that
+   * caused the clear. Used by the /clear slash and the header Clear button
+   * (`'manual'`) and, in later tasks, by the idle / threshold auto-clear
+   * effects. Default trigger is `'manual'` so call sites that don't care
+   * stay terse. The token counter goes back to 0; the next send starts a
+   * fresh conversation that begins after the divider.
    */
-  clear: () => void;
+  clear: (opts?: { trigger?: SessionTrigger }) => void;
 }
 
 export function useChat(): UseChatResult {
@@ -168,16 +188,18 @@ export function useChat(): UseChatResult {
     setStreaming(false);
   }, []);
 
-  const clear = useCallback(() => {
+  const clear = useCallback((opts?: { trigger?: SessionTrigger }) => {
+    const trigger = opts?.trigger ?? 'manual';
     // Cancel any in-flight stream first so its finally block doesn't race
     // with the reset and re-flip streaming back on. Then wipe state in the
-    // same render: empty turns, zeroed usage, frozen elapsed counter.
+    // same render: turns become a single session_break divider tagged with
+    // the trigger, usage zeroed, elapsed counter frozen.
     if (ctrlRef.current) {
       ctrlRef.current.abort();
       ctrlRef.current = null;
     }
     startedAtRef.current = null;
-    setTurns([]);
+    setTurns([makeSessionBreakTurn(trigger, new Date())]);
     setUsage(ZERO_USAGE);
     setElapsedSec(0);
     setStreaming(false);
