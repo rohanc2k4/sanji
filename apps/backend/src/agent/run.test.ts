@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { runAgent, type AgentDependencies } from './run.js';
 import type { Skill } from '../skills/parse.js';
-import type { ChatEvent, ProviderAdapter } from '@sanji/shared';
+import type { ChatEvent, ChatOpts, ProviderAdapter } from '@sanji/shared';
 import { Registry } from '../tools/registry.js';
 import type { ToolContext } from '../tools/types.js';
 
@@ -114,6 +114,52 @@ describe('runAgent', () => {
       [],
     );
     expect(stats.skill).toBe('ask');
+  });
+
+  it('threads full conversation history into the adapter chat() call, with the latest user content slash-stripped', async () => {
+    const captured: { opts?: ChatOpts } = {};
+    const adapter: ProviderAdapter = {
+      async *chat(opts: ChatOpts) {
+        captured.opts = opts;
+        yield { type: 'message_stop' } satisfies ChatEvent;
+      },
+      async getAvailableModels() { return []; },
+      async testCredentials() { return { ok: true }; },
+    };
+    const out: ChatEvent[] = [];
+    await collectAll(
+      runAgent(
+        { adapter, registry: new Registry(), ctx: {} as ToolContext, skills: [ask], defaultModel: 'claude-sonnet-4-6' },
+        [
+          { role: 'user', content: 'what is logistic regression' },
+          { role: 'assistant', content: 'a classifier that...' },
+          { role: 'user', content: '/ask remember what I said?' },
+        ],
+      ),
+      out,
+    );
+    expect(captured.opts).toBeDefined();
+    expect(captured.opts!.messages).toEqual([
+      { role: 'user', content: 'what is logistic regression' },
+      { role: 'assistant', content: 'a classifier that...' },
+      // Latest user turn: slash trigger stripped, args preserved.
+      { role: 'user', content: 'remember what I said?' },
+    ]);
+  });
+
+  it('throws when the last message role is not user', async () => {
+    const adapter = fakeAdapter([]);
+    let caught: unknown;
+    try {
+      for await (const _ of runAgent(
+        { adapter, registry: new Registry(), ctx: {} as ToolContext, skills: [ask], defaultModel: 'claude-sonnet-4-6' },
+        [
+          { role: 'user', content: 'hi' },
+          { role: 'assistant', content: 'hello' },
+        ],
+      )) { /* drain */ }
+    } catch (err) { caught = err; }
+    expect((caught as Error).message).toMatch(/last message must have role=user/i);
   });
 
   it('errors when no /ask skill is loaded and the trigger is unknown', async () => {

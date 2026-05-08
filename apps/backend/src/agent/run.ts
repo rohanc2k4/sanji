@@ -1,4 +1,4 @@
-import type { ChatEvent, ProviderAdapter } from '@sanji/shared';
+import type { ChatEvent, ChatMessage, ProviderAdapter } from '@sanji/shared';
 import { matchSkill } from '../skills/match.js';
 import type { Skill } from '../skills/parse.js';
 import type { Registry } from '../tools/registry.js';
@@ -20,9 +20,32 @@ export interface AgentStats {
 
 export async function* runAgent(
   deps: AgentDependencies,
-  message: string,
+  /**
+   * Full conversation history. The last entry MUST be the latest user
+   * message; prior entries are earlier user/assistant turns the agent
+   * needs to see for follow-up questions ("remember what I said?") to
+   * resolve. Skill match runs against the latest user message; for the
+   * LLM call we replace the latest user content with the slash-stripped
+   * args so the prompt body the model sees doesn't contain the slash
+   * trigger but earlier turns are preserved verbatim.
+   *
+   * Backwards-compat: a bare string is accepted and treated as a single
+   * user turn (used by the CLI which is single-shot today).
+   */
+  input: string | ChatMessage[],
 ): AsyncGenerator<ChatEvent, AgentStats, void> {
-  const matched = matchSkill(deps.skills, message);
+  const history: ChatMessage[] = typeof input === 'string'
+    ? [{ role: 'user', content: input }]
+    : input;
+  if (history.length === 0) {
+    throw new Error('runAgent: empty messages array');
+  }
+  const latest = history[history.length - 1]!;
+  if (latest.role !== 'user') {
+    throw new Error('runAgent: last message must have role=user');
+  }
+
+  const matched = matchSkill(deps.skills, latest.content);
   if (!matched) {
     throw new Error(`no skill matched and no /ask fallback registered`);
   }
@@ -36,10 +59,17 @@ export async function* runAgent(
 
   let toolCalls = 0;
 
+  // Replace the last user message's content with the slash-stripped args
+  // so prior turns flow through verbatim and the agent sees full context.
+  const llmMessages: ChatMessage[] = [
+    ...history.slice(0, -1),
+    { role: 'user', content: matched.args },
+  ];
+
   const stream = deps.adapter.chat({
     model: matched.skill.model ?? deps.defaultModel,
     system: matched.skill.body,
-    messages: [{ role: 'user', content: matched.args }],
+    messages: llmMessages,
     tools: skillTools.length > 0 ? skillTools : undefined,
     toolHandler: skillTools.length > 0
       ? async (name, input) => deps.registry.run(name, input, deps.ctx)

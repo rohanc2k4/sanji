@@ -1,10 +1,35 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { ChatMessage } from '@sanji/shared';
 import { chatStream } from '@/api/chat';
 import {
   applyEvent,
   makeAssistantTurn,
   type Turn,
 } from '@/components/applyEvent';
+
+/**
+ * Flatten the chat's Turn[] (UI shape with deltas + tool calls) into the
+ * ChatMessage[] history shape the backend expects. Assistant turns
+ * collapse their delta array into a single content string; tool calls
+ * are dropped from the history we send to the LLM (the model already
+ * saw them in the original turn — we don't re-feed tool_use/tool_result
+ * blocks to keep the request shape simple for v0.1). User turns map
+ * directly. The latest user message gets appended by the caller.
+ */
+export function turnsToHistory(turns: Turn[], latestUserMessage: string): ChatMessage[] {
+  const history: ChatMessage[] = [];
+  for (const t of turns) {
+    if (t.role === 'user') {
+      history.push({ role: 'user', content: t.content });
+    } else {
+      const text = t.deltas.join('');
+      if (text.length === 0) continue;
+      history.push({ role: 'assistant', content: text });
+    }
+  }
+  history.push({ role: 'user', content: latestUserMessage });
+  return history;
+}
 
 export interface UseChatResult {
   turns: Turn[];
@@ -26,6 +51,12 @@ export function useChat(): UseChatResult {
   const [elapsedSec, setElapsedSec] = useState(0);
   const startedAtRef = useRef<number | null>(null);
   const ctrlRef = useRef<AbortController | null>(null);
+  // Mirror of `turns` for synchronous reads inside send(). useState's
+  // setter callback gives us prior state but we also need to build the
+  // outgoing history *before* the new turns are appended; the ref lets
+  // us capture that snapshot without depending on a stale closure.
+  const turnsRef = useRef<Turn[]>([]);
+  useEffect(() => { turnsRef.current = turns; }, [turns]);
 
   // Tick elapsedSec every 250ms while streaming. Cleared on stream close so
   // the value freezes on the last sample rather than continuing to climb.
@@ -51,6 +82,10 @@ export function useChat(): UseChatResult {
       ctrlRef.current.abort();
       ctrlRef.current = null;
     }
+    // Snapshot prior turns BEFORE appending the new user turn + pending
+    // assistant turn so the history we POST contains only completed
+    // turns plus the latest user message (assembled by turnsToHistory).
+    const historyToSend = turnsToHistory(turnsRef.current, message);
     setTurns((prev) => [
       ...prev,
       { role: 'user', content: message },
@@ -63,7 +98,7 @@ export function useChat(): UseChatResult {
     ctrlRef.current = ctrl;
     (async () => {
       try {
-        for await (const ev of chatStream({ message, model }, ctrl.signal)) {
+        for await (const ev of chatStream({ messages: historyToSend, model }, ctrl.signal)) {
           setTurns((prev) => applyEvent(prev, ev));
         }
       } catch (err) {

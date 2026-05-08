@@ -53,7 +53,16 @@ export interface OnboardingInitRequest {
   config: ConfigDto;
 }
 
+import type { ChatMessage } from './llm.js';
+
 export interface ChatRequest {
-  message: string;
+  /**
+   * Full conversation history. The last entry must be the latest user
+   * message; prior entries are previous user/assistant turns. The backend
+   * is stateless: the frontend owns history and posts the whole array on
+   * every send. Token-budget-aware truncation is a v0.2 concern; for v0.1
+   * full history is acceptable for typical study-buddy session lengths.
+   */
+  messages: ChatMessage[];
   model?: string;
 }

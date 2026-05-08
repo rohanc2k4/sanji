@@ -1,18 +1,26 @@
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { z } from 'zod';
-import type { ChatEvent } from '@sanji/shared';
+import type { ChatEvent, ChatMessage } from '@sanji/shared';
 import type { AgentDependencies, AgentStats } from '../../agent/run.js';
 import { runAgent as defaultRunAgent } from '../../agent/run.js';
 
+const MessageSchema = z.object({
+  role: z.enum(['user', 'assistant', 'system']),
+  content: z.string(),
+});
+
 const Body = z.object({
-  message: z.string().min(1),
+  messages: z.array(MessageSchema).min(1).refine(
+    (msgs) => msgs[msgs.length - 1]!.role === 'user',
+    { message: 'last message must have role=user' },
+  ),
   model: z.string().optional(),
 });
 
 type RunAgentFn = (
   deps: AgentDependencies,
-  msg: string,
+  input: string | ChatMessage[],
 ) => AsyncGenerator<ChatEvent, AgentStats, void>;
 
 export function chatRoute(opts: { deps: AgentDependencies; runAgent?: RunAgentFn }) {
@@ -34,7 +42,7 @@ export function chatRoute(opts: { deps: AgentDependencies; runAgent?: RunAgentFn
 
     return streamSSE(c, async (stream) => {
       try {
-        for await (const ev of runAgent(deps, parsed.data.message)) {
+        for await (const ev of runAgent(deps, parsed.data.messages)) {
           await stream.writeSSE({ event: ev.type, data: JSON.stringify(ev) });
         }
       } catch (err) {
