@@ -9,6 +9,15 @@ export interface ToolContext {
   db: Db;
   repo: IndexRepo;
   embedder: Embedder;
+  /**
+   * Optional multi-query rewriter. When present, hybrid_search fans the
+   * incoming query out into the original + up to 3 paraphrases and RRF-fuses
+   * across all of them. Absence (or returning []) degrades to single-query
+   * behavior. Wired in by the bootstrap layers that have a ProviderAdapter
+   * available (server.ts, cli.ts); test contexts and the eval harness can
+   * leave it undefined.
+   */
+  rewriter?: (query: string) => Promise<string[]>;
 }
 
 export interface Tool {

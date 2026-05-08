@@ -1,0 +1,18 @@
+[eval] method=hybrid vault=/Users/rohanchawla/Dev_Projects/sanji/sample-vault db=/tmp/sanji-eval-1778169142510.db
+[eval] indexed 22 notes / 113 chunks in 2.4s
+
+Query                                       Expected                                Top1Path                                R@5   Rank 
+------------------------------------------  --------------------------------------  --------------------------------------  ----  -----
+wire format in the ATM project              inbox/414_design_doc.md                 inbox/414_design_doc.md                 Y     1    
+what cryptographic primitives does the ba…  inbox/414_design_doc.md                 inbox/414_design_doc.md                 Y     1    
+how do we prevent replay attacks between …  inbox/414_design_doc.md                 inbox/My daily study notes.md           Y     2    
+training a binary classifier with mini-ba…  inbox/lr_sgd.md                         inbox/lr_sgd.md                         Y     1    
+solving a linear system with row operatio…  inbox/Project1.md                       inbox/Project1.md                       Y     1    
+uninformed vs informed search and local o…  inbox/421 Cheat Sheet.md                inbox/421 Cheat Sheet.md                Y     1    
+how do you get the milky emulsified pork …  recipes/tonkotsu-ramen.md               recipes/tonkotsu-ramen.md               Y     1    
+distributed sorting with pivot sampling a…  school/cmsc416/parallel-sorting.md      school/cmsc416/exam-prep.md             Y     2    
+best low rank approximation theorem from …  school/math401/svd-notes.md             school/math401/final-exam.md            Y     2    
+second palate for Saturday roast tastings   people/jordan.md                        people/jordan.md                        Y     1    
+
+[eval] method=hybrid  Recall@5 = 10/10 = 1.000
+[eval] method=hybrid  MRR      = 0.850

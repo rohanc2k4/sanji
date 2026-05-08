@@ -2,14 +2,25 @@ import { describe, expect, it } from 'vitest';
 import { Hono } from 'hono';
 import { chatRoute } from './chat.js';
 import type { AgentDependencies, AgentStats } from '../../agent/run.js';
-import type { ChatEvent } from '@sanji/shared';
+import type { ChatEvent, ChatMessage } from '@sanji/shared';
 
 function fakeAgent(events: ChatEvent[]) {
   return async function* (
     _deps: AgentDependencies,
-    _msg: string,
+    _input: string | ChatMessage[],
   ): AsyncGenerator<ChatEvent, AgentStats, void> {
     for (const e of events) yield e;
+    return { skill: 'fake', toolCalls: 0 };
+  };
+}
+
+function captureAgent(captured: { input?: string | ChatMessage[] }) {
+  return async function* (
+    _deps: AgentDependencies,
+    input: string | ChatMessage[],
+  ): AsyncGenerator<ChatEvent, AgentStats, void> {
+    captured.input = input;
+    yield { type: 'message_stop', usage: { input: 0, output: 0 } };
     return { skill: 'fake', toolCalls: 0 };
   };
 }
@@ -32,7 +43,7 @@ describe('chat route', () => {
     const res = await app.request('/api/chat', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ message: 'hi' }),
+      body: JSON.stringify({ messages: [{ role: 'user', content: 'hi' }] }),
     });
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toMatch(/text\/event-stream/);
@@ -42,7 +53,7 @@ describe('chat route', () => {
     expect(text).toMatch(/event: message_stop/);
   });
 
-  it('400s on missing message', async () => {
+  it('400s on missing messages', async () => {
     const app = new Hono();
     app.route(
       '/',
@@ -54,5 +65,50 @@ describe('chat route', () => {
       body: JSON.stringify({}),
     });
     expect(res.status).toBe(400);
+  });
+
+  it('400s when last message is not from user', async () => {
+    const app = new Hono();
+    app.route(
+      '/',
+      chatRoute({ deps: {} as AgentDependencies, runAgent: fakeAgent([]) }),
+    );
+    const res = await app.request('/api/chat', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        messages: [
+          { role: 'user', content: 'hi' },
+          { role: 'assistant', content: 'hello' },
+        ],
+      }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('passes the full conversation history to the agent', async () => {
+    const captured: { input?: string | ChatMessage[] } = {};
+    const app = new Hono();
+    app.route(
+      '/',
+      chatRoute({
+        deps: {} as AgentDependencies,
+        runAgent: captureAgent(captured),
+      }),
+    );
+    const messages: ChatMessage[] = [
+      { role: 'user', content: 'hi' },
+      { role: 'assistant', content: 'hello' },
+      { role: 'user', content: 'remember what I said?' },
+    ];
+    const res = await app.request('/api/chat', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ messages }),
+    });
+    expect(res.status).toBe(200);
+    // Drain so the streamSSE callback runs and the captureAgent fires.
+    await res.text();
+    expect(captured.input).toEqual(messages);
   });
 });

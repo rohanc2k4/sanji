@@ -7,6 +7,8 @@ export interface ChunkUpsert {
   startChar: number;
   endChar: number;
   embedding: Float32Array;
+  headerTrail?: string[];
+  contextText?: string | null;
 }
 
 export interface ChunkHit {
@@ -17,6 +19,8 @@ export interface ChunkHit {
   startChar: number;
   endChar: number;
   distance: number;
+  headerTrail: string[];
+  contextText: string | null;
 }
 
 export class IndexRepo {
@@ -67,10 +71,47 @@ export class IndexRepo {
     this.db.prepare('DELETE FROM notes WHERE path = ?').run(path);
   }
 
+  /**
+   * Read the index_schema_version that was stored when this note was last
+   * indexed. Indexer compares this against its current version and forces
+   * a reindex when they don't match — e.g. the user flipped the
+   * [ingestion] contextual_retrieval flag, which changes how chunks get
+   * embedded but does not change file mtimes. Returns null when the
+   * column was never set (legacy rows from before migration 005).
+   */
+  getNoteIndexVersion(path: string): string | null {
+    const row = this.db
+      .prepare('SELECT index_schema_version AS v FROM notes WHERE path = ?')
+      .get(path) as { v: string | null } | undefined;
+    return row?.v ?? null;
+  }
+
+  setNoteIndexVersion(path: string, version: string): void {
+    this.db
+      .prepare('UPDATE notes SET index_schema_version = ? WHERE path = ?')
+      .run(version, path);
+  }
+
   allNotePaths(): string[] {
     return (this.db.prepare('SELECT path FROM notes').all() as Array<{ path: string }>).map(
       (r) => r.path,
     );
+  }
+
+  listNotesForContext(): Array<{
+    path: string;
+    title: string | null;
+    frontmatter_json: string | null;
+    body: string;
+  }> {
+    return this.db
+      .prepare('SELECT path, title, frontmatter_json, body FROM notes ORDER BY path')
+      .all() as Array<{
+      path: string;
+      title: string | null;
+      frontmatter_json: string | null;
+      body: string;
+    }>;
   }
 
   // ─── chunks ─────────────────────────────────────────────────────────
@@ -83,13 +124,21 @@ export class IndexRepo {
       this.db.prepare('DELETE FROM chunks WHERE note_path = ?').run(notePath);
 
       const insertRow = this.db.prepare(
-        'INSERT INTO chunks (note_path, chunk_index, text, start_char, end_char) VALUES (?, ?, ?, ?, ?) RETURNING id',
+        'INSERT INTO chunks (note_path, chunk_index, text, start_char, end_char, header_trail, context_text) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id',
       );
       const insertVec = this.db.prepare('INSERT INTO chunks_vec (rowid, embedding) VALUES (?, ?)');
       for (const c of items) {
-        const { id } = insertRow.get(notePath, c.chunkIndex, c.text, c.startChar, c.endChar) as {
-          id: bigint;
-        };
+        const trailJson = c.headerTrail && c.headerTrail.length ? JSON.stringify(c.headerTrail) : null;
+        const ctxText = c.contextText && c.contextText.length ? c.contextText : null;
+        const { id } = insertRow.get(
+          notePath,
+          c.chunkIndex,
+          c.text,
+          c.startChar,
+          c.endChar,
+          trailJson,
+          ctxText,
+        ) as { id: bigint };
         insertVec.run(id, Buffer.from(c.embedding.buffer, c.embedding.byteOffset, c.embedding.byteLength));
       }
     });
@@ -106,6 +155,40 @@ export class IndexRepo {
     tx();
   }
 
+  firstChunk(path: string): ChunkHit | null {
+    type Row = {
+      id: bigint;
+      notePath: string;
+      chunkIndex: bigint;
+      text: string;
+      startChar: bigint;
+      endChar: bigint;
+      headerTrail: string | null;
+      contextText: string | null;
+    };
+    const row = this.db
+      .prepare(
+        `SELECT id, note_path AS notePath, chunk_index AS chunkIndex,
+                text, start_char AS startChar, end_char AS endChar,
+                header_trail AS headerTrail,
+                context_text AS contextText
+         FROM chunks WHERE note_path = ? ORDER BY chunk_index ASC LIMIT 1`,
+      )
+      .get(path) as Row | undefined;
+    if (!row) return null;
+    return {
+      id: Number(row.id),
+      notePath: row.notePath,
+      chunkIndex: Number(row.chunkIndex),
+      text: row.text,
+      startChar: Number(row.startChar),
+      endChar: Number(row.endChar),
+      distance: 0,
+      headerTrail: row.headerTrail ? (JSON.parse(row.headerTrail) as string[]) : [],
+      contextText: row.contextText,
+    };
+  }
+
   knnChunks(query: Float32Array, k: number): ChunkHit[] {
     type Row = {
       id: bigint;
@@ -115,11 +198,15 @@ export class IndexRepo {
       startChar: bigint;
       endChar: bigint;
       distance: number;
+      headerTrail: string | null;
+      contextText: string | null;
     };
     const rows = this.db
       .prepare(
         `SELECT c.id, c.note_path AS notePath, c.chunk_index AS chunkIndex,
                 c.text, c.start_char AS startChar, c.end_char AS endChar,
+                c.header_trail AS headerTrail,
+                c.context_text AS contextText,
                 v.distance
          FROM chunks_vec v JOIN chunks c ON c.id = v.rowid
          WHERE v.embedding MATCH ? AND v.k = ?
@@ -134,6 +221,8 @@ export class IndexRepo {
       startChar: Number(r.startChar),
       endChar: Number(r.endChar),
       distance: r.distance,
+      headerTrail: r.headerTrail ? (JSON.parse(r.headerTrail) as string[]) : [],
+      contextText: r.contextText,
     }));
   }
 

@@ -30,6 +30,10 @@ yarn-debug.log*
 .sanji/
 /vault/
 
+# sample-vault inbox is a user-local landing zone for ingestion smoke tests
+sample-vault/inbox/*
+!sample-vault/inbox/.gitkeep
+
 # Playwright artifacts (snapshots, traces, attachments from failing runs)
 test-results/
 playwright-report/

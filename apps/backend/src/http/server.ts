@@ -6,7 +6,9 @@ import { vaultRoute } from './routes/vault.js';
 import { notesRoute } from './routes/notes.js';
 import { chatRoute } from './routes/chat.js';
 import { indexingRoute } from './routes/indexing.js';
-import { Indexer } from '../index/indexer.js';
+import { ingestRoute } from './routes/ingest.js';
+import { makeRewriterLlm } from '../retrieval/rewriter-deps.js';
+import { rewriteQuery } from '../retrieval/rewriter.js';
 import type { ServerDeps } from './deps.js';
 import { teardownReadyDeps, type ReadyDeps } from './bootstrap.js';
 
@@ -27,7 +29,7 @@ function buildRoutes(
   if (deps.kind === 'ready') {
     app.route('/', configRoute({ paths: deps.paths }));
     app.route('/', vaultRoute({ db: deps.db, paths: deps.paths }));
-    app.route('/', notesRoute({ paths: deps.paths }));
+    app.route('/', notesRoute({ paths: deps.paths, repo: deps.repo, indexer: deps.indexer }));
     app.route(
       '/',
       chatRoute({
@@ -39,22 +41,24 @@ function buildRoutes(
             db: deps.db,
             repo: deps.repo,
             embedder: deps.embedder,
+            rewriter: ((rewriterLlm) => (q: string) =>
+              rewriteQuery(q, { llm: rewriterLlm }))(makeRewriterLlm(deps.adapter)),
           },
           skills: deps.skills,
           defaultModel: deps.cfg.models.default,
         },
       }),
     );
+    // Uses the shared Indexer instance from bootstrap so the contextual-blurb
+    // wiring is consistent across full-vault indexing, post-ingest single-file
+    // indexing, and post-rename single-file indexing.
     const runIndex = async (
       cb: (done: number, total: number) => void | Promise<void>,
     ) => {
-      const ix = new Indexer(deps.db, deps.embedder, {
-        chunkSizeTokens: deps.cfg.indexing.chunkSizeTokens,
-        chunkOverlapTokens: deps.cfg.indexing.chunkOverlapTokens,
-      });
-      await ix.indexAll(deps.paths.vault, { onProgress: cb });
+      await deps.indexer.indexAll(deps.paths.vault, { onProgress: cb });
     };
     app.route('/', indexingRoute({ runIndex }));
+    app.route('/', ingestRoute({ service: deps.ingestService }));
   }
 
   return app;

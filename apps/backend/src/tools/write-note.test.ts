@@ -48,6 +48,46 @@ describe('writeNoteTool', () => {
     expect(readFileSync(join(dir, '.sanji/versions/scratch', snapshots[0]!), 'utf8')).toBe('old');
   });
 
+  it('preserves existing frontmatter when new content omits it (overwrite path)', async () => {
+    const { dir, ctx } = setup();
+    await mkdir(join(dir, 'inbox'), { recursive: true });
+    const original =
+      '---\n' +
+      'title: Demo\n' +
+      'source: .sanji/originals/demo.pdf\n' +
+      'ingested_on: 2026-05-06\n' +
+      'content_type: paper\n' +
+      'summary: short\n' +
+      '---\n\n' +
+      '# Demo\n\nold body\n';
+    await writeFile(join(dir, 'inbox/demo.md'), original, 'utf8');
+
+    const newBody = '# Demo\n\nrewritten body\n';
+    await writeNoteTool.run({ path: 'inbox/demo.md', content: newBody }, ctx);
+
+    const onDisk = readFileSync(join(dir, 'inbox/demo.md'), 'utf8');
+    expect(onDisk.startsWith('---\n')).toBe(true);
+    expect(onDisk).toContain('title: Demo');
+    expect(onDisk).toContain('source: .sanji/originals/demo.pdf');
+    expect(onDisk).toContain('rewritten body');
+  });
+
+  it('does not double-prepend when new content already has frontmatter', async () => {
+    const { dir, ctx } = setup();
+    await mkdir(join(dir, 'inbox'), { recursive: true });
+    await writeFile(
+      join(dir, 'inbox/a.md'),
+      '---\ntitle: Old\n---\n\nold\n',
+      'utf8',
+    );
+    const next = '---\ntitle: New\n---\n\nnew body\n';
+    await writeNoteTool.run({ path: 'inbox/a.md', content: next }, ctx);
+    const onDisk = readFileSync(join(dir, 'inbox/a.md'), 'utf8');
+    expect(onDisk).toBe(next);
+    // Only one frontmatter block on disk.
+    expect(onDisk.match(/^---\s*$/gm)?.length).toBe(2);
+  });
+
   it('auto-creates nested parent directories', async () => {
     const { dir, ctx } = setup();
     await writeNoteTool.run({ path: 'a/b/c/deep.md', content: 'x' }, ctx);

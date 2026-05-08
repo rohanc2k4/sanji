@@ -76,4 +76,37 @@ describe('applyEvent', () => {
     expect(a).toBe(turns);
     expect(b).toBe(a);
   });
+
+  it('does not mutate a session_break turn when a text_delta arrives', () => {
+    const turns: Turn[] = [
+      { role: 'session_break', trigger: 'idle', message: 'mrr', timestamp: new Date() },
+    ];
+    const next = applyEvent(turns, { type: 'text_delta', text: 'hi' });
+    // The session_break stays at index 0 untouched; a fresh assistant turn is appended.
+    expect(next[0]?.role).toBe('session_break');
+    expect(next.length).toBeGreaterThan(1);
+    const lastTurn = next[next.length - 1];
+    expect(lastTurn?.role).toBe('assistant');
+    if (lastTurn?.role === 'assistant') {
+      expect(lastTurn.deltas).toEqual(['hi']);
+    }
+  });
+
+  it('updates currentActivity from tool_call_start and clears on tool_call_end', () => {
+    const turns = withAssistant();
+    const a = applyEvent(turns, {
+      type: 'tool_call_start',
+      id: 't1',
+      tool: 'grep_vault',
+      args_summary: 'Searching for "logistic regression"',
+    });
+    let last = a[a.length - 1]!;
+    if (last.role !== 'assistant') throw new Error('expected assistant');
+    expect(last.currentActivity).toBe('Searching for "logistic regression"');
+
+    const b = applyEvent(a, { type: 'tool_call_end', id: 't1', tool: 'grep_vault' });
+    last = b[b.length - 1]!;
+    if (last.role !== 'assistant') throw new Error('expected assistant');
+    expect(last.currentActivity).toBeUndefined();
+  });
 });

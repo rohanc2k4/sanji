@@ -108,6 +108,66 @@ describe('IndexRepo — chunks', () => {
     expect(hits[0]?.text).toBe('alpha');
   });
 
+  it('round-trips context_text through replace + knnChunks + firstChunk', async () => {
+    const { repo, embedder } = setup();
+    repo.upsertNote({ path: 'a.md', mtimeMs: 1, body: 'b', frontmatter: null, title: null });
+    const v1 = await embedder.embed('alpha');
+    repo.replaceChunksForNote('a.md', [
+      {
+        chunkIndex: 0,
+        text: 'alpha',
+        startChar: 0,
+        endChar: 5,
+        embedding: v1,
+        headerTrail: ['H'],
+        contextText: 'A blurb describing alpha.',
+      },
+    ]);
+    const target = await embedder.embed('alpha');
+    const hits = repo.knnChunks(target, 1);
+    expect(hits[0]?.contextText).toBe('A blurb describing alpha.');
+    const fc = repo.firstChunk('a.md');
+    expect(fc?.contextText).toBe('A blurb describing alpha.');
+  });
+
+  it('round-trips header_trail through replace + knnChunks', async () => {
+    const { repo, embedder } = setup();
+    repo.upsertNote({ path: 'a.md', mtimeMs: 1, body: 'b', frontmatter: null, title: null });
+    const v1 = await embedder.embed('alpha');
+    repo.replaceChunksForNote('a.md', [
+      {
+        chunkIndex: 0,
+        text: 'alpha',
+        startChar: 0,
+        endChar: 5,
+        embedding: v1,
+        headerTrail: ['A', 'B'],
+      },
+    ]);
+    const target = await embedder.embed('alpha');
+    const hits = repo.knnChunks(target, 1);
+    expect(hits[0]?.headerTrail).toEqual(['A', 'B']);
+  });
+
+  it('firstChunk returns chunk_index=0 chunk with header_trail and null when missing', async () => {
+    const { repo, embedder } = setup();
+    repo.upsertNote({ path: 'a.md', mtimeMs: 1, body: 'b', frontmatter: null, title: null });
+    expect(repo.firstChunk('a.md')).toBeNull();
+    const v1 = await embedder.embed('alpha');
+    const v2 = await embedder.embed('omega');
+    repo.replaceChunksForNote('a.md', [
+      { chunkIndex: 0, text: 'alpha', startChar: 0, endChar: 5, embedding: v1, headerTrail: ['H'] },
+      { chunkIndex: 1, text: 'omega', startChar: 6, endChar: 11, embedding: v2 },
+    ]);
+    const fc = repo.firstChunk('a.md');
+    expect(fc).not.toBeNull();
+    expect(fc?.chunkIndex).toBe(0);
+    expect(fc?.text).toBe('alpha');
+    expect(fc?.headerTrail).toEqual(['H']);
+    expect(fc?.distance).toBe(0);
+    expect(repo.firstChunk('does-not-exist.md')).toBeNull();
+  });
+
   it('cascades delete from chunks → chunks_vec', async () => {
     const { db, repo, embedder } = setup();
     repo.upsertNote({ path: 'a.md', mtimeMs: 1, body: 'b', frontmatter: null, title: null });

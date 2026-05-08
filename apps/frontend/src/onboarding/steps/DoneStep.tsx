@@ -11,10 +11,6 @@ export function DoneStep({ state }: StepProps) {
             <SummaryRow label="Vault" value={state.vault} mono />
             <SummaryRow label="Provider" value={state.providerMode} />
             <SummaryRow label="Default model" value={state.modelDefault} mono />
-            {state.calendarUrls.length > 0 && (
-              <SummaryRow label="Calendars" value={`${state.calendarUrls.length} added`} />
-            )}
-            {state.tavilyKey && <SummaryRow label="Tavily" value="key set" />}
             <SummaryRow label="Indexed" value={`${state.indexedNotes} notes`} />
           </div>
         </div>

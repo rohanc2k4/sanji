@@ -18,7 +18,7 @@ function clampLimit(input: unknown): number {
 export const semanticSearchTool: Tool = {
   name: 'semantic_search',
   description:
-    "Semantic search over chunk embeddings (cosine similarity via sqlite-vec). Use this for conceptual questions ('what did I decide about X', 'what do I know about Y'). For exact-keyword search use search_vault. Returns up to N nearest chunks as JSON, each {notePath, chunkIndex, text, distance}.",
+    "(deprecated, prefer hybrid_search) Semantic search over chunk embeddings (cosine similarity via sqlite-vec). Use this for conceptual questions ('what did I decide about X', 'what do I know about Y'). For exact-keyword search use search_vault. Returns up to N nearest chunks as JSON, each {notePath, chunkIndex, text, distance}.",
   inputSchema: {
     type: 'object',
     properties: {

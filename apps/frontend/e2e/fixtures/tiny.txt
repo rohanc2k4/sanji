@@ -1,0 +1,5 @@
+A short note for the ingestion E2E test.
+
+It has two paragraphs of plain prose so the txt extractor has something
+non-trivial to read but the rewrite skill stays small and fast under the
+OfflineFakeAdapter.
