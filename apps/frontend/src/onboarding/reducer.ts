@@ -115,5 +115,6 @@ export function buildConfig(s: OnboardingState): ConfigDto {
     },
     ingestion: { contextualRetrieval: false },
     ui: { theme: 'auto', mascot: 'chatty' },
+    chat: { autoClearThreshold: 0.75, autoClearIdleMinutes: 30 },
   };
 }

@@ -52,12 +52,32 @@ export const ConfigSchema = z
         mascot: z.enum(['chatty', 'quiet', 'off']).default('chatty'),
       })
       .default({ theme: 'auto', mascot: 'chatty' }),
+    chat: z
+      .object({
+        autoClearThreshold: z.number().min(0).max(1),
+        autoClearIdleMinutes: z.number().int().min(1),
+      })
+      .default({ autoClearThreshold: 0.75, autoClearIdleMinutes: 30 }),
   })
   .strict();
 
 export type Config = z.infer<typeof ConfigSchema>;
 
 export function parseConfig(toml: string): Config {
-  const raw = parseToml(toml);
+  const raw = parseToml(toml) as Record<string, unknown>;
+  // Pre-process [chat] block: convert snake_case keys to camelCase, clamp
+  // values into the schema's accepted range so power users who fat-finger a
+  // value in the TOML get a sane default rather than a Zod throw.
+  const rawChat = (raw.chat ?? {}) as Record<string, unknown>;
+  const rawThreshold = typeof rawChat.auto_clear_threshold === 'number'
+    ? rawChat.auto_clear_threshold
+    : 0.75;
+  const rawIdle = typeof rawChat.auto_clear_idle_minutes === 'number'
+    ? rawChat.auto_clear_idle_minutes
+    : 30;
+  raw.chat = {
+    autoClearThreshold: Math.max(0, Math.min(1, rawThreshold)),
+    autoClearIdleMinutes: Math.max(1, Math.floor(rawIdle)),
+  };
   return ConfigSchema.parse(raw);
 }

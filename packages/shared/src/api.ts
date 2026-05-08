@@ -23,6 +23,7 @@ export interface ConfigDto {
   indexing: { chunkSizeTokens: number; chunkOverlapTokens: number; embeddingModel: string };
   ingestion: { contextualRetrieval: boolean };
   ui: { theme: 'auto' | 'light' | 'dark'; mascot: 'chatty' | 'quiet' | 'off' };
+  chat: { autoClearThreshold: number; autoClearIdleMinutes: number };
 }
 
 export interface ProviderTestResult {

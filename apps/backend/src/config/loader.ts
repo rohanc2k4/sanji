@@ -37,6 +37,14 @@ contextual_retrieval = false
 [ui]
 theme = "auto"
 mascot = "chatty"
+
+[chat]
+# Auto-clear thresholds for the in-app chat. When context window usage crosses
+# auto_clear_threshold (fraction in [0,1]) AND the conversation has been idle
+# for auto_clear_idle_minutes, Sanji offers to clear history. Tune both knobs
+# for power users who want stricter or looser auto-clear behavior.
+auto_clear_threshold = 0.75
+auto_clear_idle_minutes = 30
 `;
 
 export function loadOrInitConfig(paths: VaultPaths): Config {
@@ -61,6 +69,10 @@ export function saveConfig(paths: VaultPaths, cfg: Config): void {
     indexing: cfg.indexing,
     ingestion: cfg.ingestion,
     ui: cfg.ui,
+    chat: {
+      auto_clear_threshold: cfg.chat.autoClearThreshold,
+      auto_clear_idle_minutes: cfg.chat.autoClearIdleMinutes,
+    },
   };
   writeFileSync(paths.configFile, tomlStringify(serializable), 'utf8');
 }

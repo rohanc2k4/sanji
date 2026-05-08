@@ -29,6 +29,10 @@ const PatchSchema = z.object({
     theme: z.enum(['auto', 'light', 'dark']),
     mascot: z.enum(['chatty', 'quiet', 'off']),
   }).partial().optional(),
+  chat: z.object({
+    autoClearThreshold: z.number().min(0).max(1),
+    autoClearIdleMinutes: z.number().int().min(1),
+  }).partial().optional(),
 }).strict();
 
 function mergeDto(current: ConfigDto, patch: z.infer<typeof PatchSchema>): ConfigDto {
@@ -40,6 +44,7 @@ function mergeDto(current: ConfigDto, patch: z.infer<typeof PatchSchema>): Confi
     indexing: { ...current.indexing, ...patch.indexing },
     ingestion: { ...current.ingestion, ...patch.ingestion },
     ui: { ...current.ui, ...patch.ui },
+    chat: { ...current.chat, ...patch.chat },
   };
 }
 
