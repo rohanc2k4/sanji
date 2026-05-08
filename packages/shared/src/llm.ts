@@ -53,6 +53,27 @@ export type ChatEvent =
    */
   | { type: 'tool_call_start'; id: string; tool: string; args_summary: string }
   | { type: 'tool_call_end'; id: string; tool: string }
+  /**
+   * Token-usage update for the just-completed LLM turn. Emitted by runAgent
+   * after each adapter chat() call resolves, derived from the adapter's
+   * message_stop usage payload. Frontend accumulates input + output tokens
+   * across turns and renders them against the active model's contextWindow
+   * (see apps/frontend/src/chat/model-metadata.ts).
+   *
+   * `cache_read_input_tokens` / `cache_creation_input_tokens` are reserved
+   * for the v0.2 caching pipeline; adapters that don't surface them omit
+   * the fields, frontend ignores them today. Adapters that report no
+   * usage at all (e.g. the Claude Code SDK in some modes) emit
+   * input_tokens=0, output_tokens=0; the frontend treats zeroes as
+   * unknown rather than erroring.
+   */
+  | {
+      type: 'usage_update';
+      input_tokens: number;
+      output_tokens: number;
+      cache_read_input_tokens?: number;
+      cache_creation_input_tokens?: number;
+    }
   | { type: 'message_stop'; usage?: { input: number; output: number } }
   | { type: 'error'; message: string };
 

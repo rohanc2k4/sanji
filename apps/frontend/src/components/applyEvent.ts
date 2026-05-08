@@ -75,6 +75,9 @@ export function applyEvent(turns: Turn[], event: ChatEvent): Turn[] {
     case 'tool_use_start':
     case 'tool_use_input_delta':
     case 'message_stop':
+    case 'usage_update':
+      // usage_update is consumed by useChat's usage state, not the per-turn
+      // assistant Turn shape — applyEvent is a no-op here on purpose.
       return turns;
     default: {
       // Exhaustiveness check: a new ChatEvent variant in @sanji/shared will
