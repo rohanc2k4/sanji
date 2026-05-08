@@ -51,7 +51,12 @@ export function makeSessionBreakTurn(trigger: SessionTrigger, timestamp: Date): 
 }
 
 export interface UsageState {
-  /** Sum of input_tokens reported across all completed turns this conversation. */
+  /**
+   * Latest reported `input_tokens` (size of the next prompt the model would
+   * receive). Anthropic re-reports the FULL prompt each turn, so this is a
+   * replacement, not an accumulation. Use this directly for "how full is
+   * the context" math.
+   */
   inputTokens: number;
   /** Sum of output_tokens reported across all completed turns this conversation. */
   outputTokens: number;
@@ -81,7 +86,10 @@ export function applyUsageUpdate(
   evt: { input_tokens?: number; output_tokens?: number },
 ): UsageState {
   return {
-    inputTokens: prev.inputTokens + (evt.input_tokens ?? 0),
+    // input_tokens from Anthropic is the FULL prompt size for that turn
+    // (it already includes prior history). Accumulating double-counts;
+    // take the latest sample as the replacement value.
+    inputTokens: evt.input_tokens ?? prev.inputTokens,
     outputTokens: prev.outputTokens + (evt.output_tokens ?? 0),
   };
 }
@@ -116,6 +124,19 @@ export interface UseChatResult {
    * count as activity that should defer the idle auto-clear.
    */
   noteActivity: () => void;
+  /**
+   * True when accumulated usage has crossed the configured threshold and the
+   * user hasn't acted on it yet. Surfaces a "context filling up · clear to
+   * keep answers sharp" notice in the UI; the user clicks to clear, OR
+   * we let the next idle trigger handle it. We do NOT auto-clear on
+   * stream-close because that wipes the answer they just got.
+   */
+  thresholdWarning: boolean;
+  /**
+   * Manually dismiss the threshold warning without clearing the
+   * conversation. Resets after the next clear automatically.
+   */
+  dismissThresholdWarning: () => void;
 }
 
 export interface UseChatOpts {
@@ -144,6 +165,7 @@ export function useChat(opts?: UseChatOpts): UseChatResult {
   const [streaming, setStreaming] = useState(false);
   const [elapsedSec, setElapsedSec] = useState(0);
   const [usage, setUsage] = useState<UsageState>(ZERO_USAGE);
+  const [thresholdWarning, setThresholdWarning] = useState(false);
   const startedAtRef = useRef<number | null>(null);
   const ctrlRef = useRef<AbortController | null>(null);
   // Mirror of `turns` for synchronous reads inside send(). useState's
@@ -233,13 +255,11 @@ export function useChat(opts?: UseChatOpts): UseChatResult {
               const next = applyUsageUpdate(u, ev);
               const cw = getModelMetadata(modelIdRef.current).contextWindow;
               if (shouldClearOnThreshold(next, cw, thresholdRef.current)) {
-                // Stash for the SSE done handler. If it's already set
-                // (e.g. idle fired earlier), keep the earlier value;
-                // either trigger lands the same divider semantically
-                // and we don't want to overwrite the cause.
-                if (pendingClearRef.current === null) {
-                  pendingClearRef.current = 'threshold';
-                }
+                // Surface a banner. Do NOT auto-clear on stream close —
+                // that wipes the completed answer the user just got. The
+                // user clicks the banner to clear explicitly, or the next
+                // idle trigger lands the divider if they walk away.
+                setThresholdWarning(true);
               }
               return next;
             });
@@ -294,6 +314,11 @@ export function useChat(opts?: UseChatOpts): UseChatResult {
     setUsage(ZERO_USAGE);
     setElapsedSec(0);
     setStreaming(false);
+    setThresholdWarning(false);
+  }, []);
+
+  const dismissThresholdWarning = useCallback(() => {
+    setThresholdWarning(false);
   }, []);
 
   const noteActivity = useCallback(() => {
@@ -325,5 +350,16 @@ export function useChat(opts?: UseChatOpts): UseChatResult {
     };
   }, [idleMinutes, clear]);
 
-  return { turns, streaming, elapsedSec, usage, send, abort, clear, noteActivity };
+  return {
+    turns,
+    streaming,
+    elapsedSec,
+    usage,
+    send,
+    abort,
+    clear,
+    noteActivity,
+    thresholdWarning,
+    dismissThresholdWarning,
+  };
 }

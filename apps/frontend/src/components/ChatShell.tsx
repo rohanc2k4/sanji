@@ -125,6 +125,34 @@ export function ChatShell({
             elapsedSec={chat.elapsedSec}
             onFilesDropped={onFilesDropped}
           />
+          {chat.thresholdWarning ? (
+            <div
+              role="status"
+              className="flex items-center justify-between gap-3 border-t border-border bg-muted/40 px-4 py-2 text-xs text-muted-foreground"
+            >
+              <span>context filling up · clear to keep answers sharp</span>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  className="font-medium text-foreground underline-offset-2 hover:underline"
+                  onClick={() => {
+                    chat.clear({ trigger: 'threshold' });
+                    toast.success('Conversation cleared.');
+                  }}
+                >
+                  clear conversation
+                </button>
+                <button
+                  type="button"
+                  className="text-muted-foreground/60 hover:text-foreground"
+                  onClick={chat.dismissThresholdWarning}
+                  aria-label="Dismiss"
+                >
+                  dismiss
+                </button>
+              </div>
+            </div>
+          ) : null}
           <Composer
             model={selectedModel}
             onSubmit={chat.send}
