@@ -19,6 +19,7 @@ import {
 export function turnsToHistory(turns: Turn[], latestUserMessage: string): ChatMessage[] {
   const history: ChatMessage[] = [];
   for (const t of turns) {
+    if (t.role === 'session_break') continue;
     if (t.role === 'user') {
       history.push({ role: 'user', content: t.content });
     } else {

@@ -153,6 +153,10 @@ function renderRevealed(fullText: string, revealedWordCount: number): ReactNode[
 }
 
 export function ChatMessage({ turn, streaming, elapsedSec }: ChatMessageProps) {
+  // Auto-clear divider — Task 8 will swap this no-op for a real <SessionBreak>
+  // render. For now the variant exists in the union so tsc passes; the
+  // component renders nothing so existing chat behavior is untouched.
+  if (turn.role === 'session_break') return null;
   if (turn.role === 'user') {
     return (
       <div className="flex justify-end">

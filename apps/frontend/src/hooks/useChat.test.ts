@@ -36,6 +36,21 @@ describe('turnsToHistory', () => {
       { role: 'user', content: 'first message' },
     ]);
   });
+
+  it('skips session_break turns when building history', () => {
+    const turns: Turn[] = [
+      { role: 'user', content: 'hi' },
+      { role: 'assistant', deltas: ['hello'], toolCalls: [], errors: [] },
+      { role: 'session_break', trigger: 'manual', message: null, timestamp: new Date() },
+      { role: 'user', content: 'are you there' },
+      { role: 'assistant', deltas: ['yes'], toolCalls: [], errors: [] },
+    ];
+    const history = turnsToHistory(turns, 'follow up');
+    // Two user + two assistant + one trailing user = 5 entries; session_break dropped.
+    expect(history).toHaveLength(5);
+    expect(history.map((m) => m.role)).toEqual(['user', 'assistant', 'user', 'assistant', 'user']);
+    expect(history[history.length - 1]).toEqual({ role: 'user', content: 'follow up' });
+  });
 });
 
 describe('applyUsageUpdate', () => {

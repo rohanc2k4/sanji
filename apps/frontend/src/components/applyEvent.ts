@@ -21,16 +21,44 @@ export type Turn =
        * tool_call_start replaces it. Undefined when no tool is in flight.
        */
       currentActivity?: string;
+    }
+  | {
+      /**
+       * A divider injected when the auto-clear heuristic (idle / threshold)
+       * fires or the user runs /clear. Renders as a visual break in later
+       * tasks; `turnsToHistory` skips these so they never travel to the LLM.
+       */
+      role: 'session_break';
+      trigger: 'idle' | 'threshold' | 'manual';
+      message: string | null;
+      timestamp: Date;
     };
 
 export function makeAssistantTurn(): Turn {
   return { role: 'assistant', deltas: [], toolCalls: [], errors: [] };
 }
 
+/**
+ * Ensure the last turn is an assistant turn so the index-based mutation
+ * branches below have somewhere to write. If the trailing turn is a
+ * `session_break` (auto-clear divider), append a fresh assistant turn so
+ * the next stream of deltas/tool calls collects on a clean turn after the
+ * divider rather than silently dropping. The user-only case stays
+ * unchanged: an event arriving with no assistant turn yet is a bug
+ * upstream, so we preserve the existing "return turns" semantics there.
+ */
+function ensureAssistantLast(turns: Turn[]): Turn[] {
+  const last = turns[turns.length - 1];
+  if (last?.role === 'session_break') return [...turns, makeAssistantTurn()];
+  return turns;
+}
+
 export function applyEvent(turns: Turn[], event: ChatEvent): Turn[] {
-  const lastIdx = turns.length - 1;
-  const last = turns[lastIdx];
+  const prepared = ensureAssistantLast(turns);
+  const lastIdx = prepared.length - 1;
+  const last = prepared[lastIdx];
   if (!last || last.role !== 'assistant') return turns;
+  turns = prepared;
 
   switch (event.type) {
     case 'text_delta': {
