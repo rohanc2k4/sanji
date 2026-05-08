@@ -244,6 +244,53 @@ describe('IngestService', () => {
     db.close();
   });
 
+  it('refuses to overwrite a target that races into existence after the pre-check', async () => {
+    // The pre-flight existsSync check inside process() runs before the
+    // 30+ second extract+rewrite window. If a parallel process or sibling
+    // ingest creates the same inbox path during that window, the final
+    // commit must NOT silently overwrite. We simulate by having the
+    // adapter, while streaming, drop a competitor file at the target
+    // path. With the wx (exclusive create) commit, the ingest emits an
+    // error and the competitor's content is preserved.
+    const paths = resolveVaultPaths(dir);
+    mkdirSync(paths.sanjiDir, { recursive: true });
+    mkdirSync(join(paths.vault, 'inbox'), { recursive: true });
+    const db = openDb(paths.indexDb);
+    runMigrations(db);
+    const repo = new IndexRepo(db);
+    const racingAdapter: ProviderAdapter = {
+      async *chat(_o: ChatOpts): AsyncIterable<ChatEvent> {
+        // Sneak a competitor file in mid-stream — between the existsSync
+        // pre-check and the final commit. Mirrors a real-world race
+        // (parallel ingest, external editor, sync tool).
+        writeFileSync(join(paths.vault, 'inbox/demo.md'), 'competitor wrote first');
+        yield { type: 'text_delta', text: VALID_OUTPUT };
+        yield { type: 'message_stop', usage: { input: 100, output: 50 } };
+      },
+      async getAvailableModels() { return []; },
+      async testCredentials() { return { ok: true as const }; },
+    };
+    const service = new IngestService({
+      paths, repo, adapter: racingAdapter, model: 'sonnet', ingestSkill,
+    });
+    const events: any[] = [];
+    for await (const ev of service.enqueue({
+      fileId: 'race1',
+      source: { kind: 'paste', title: 'demo', content: 'hello world' },
+      abortController: new AbortController(),
+    })) {
+      events.push(ev);
+    }
+    const last = events.at(-1)!;
+    expect(last.kind).toBe('error');
+    expect(last.phase).toBe('write');
+    expect(last.message).toMatch(/raced|already exists/i);
+    // Competitor's content is intact — we did NOT clobber it.
+    expect(readFileSync(join(paths.vault, 'inbox/demo.md'), 'utf-8'))
+      .toBe('competitor wrote first');
+    db.close();
+  });
+
   it('emits error event with phase=extract when paste content is empty', async () => {
     const { service, db } = setup();
     const events: any[] = [];

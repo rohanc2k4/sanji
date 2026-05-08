@@ -1,4 +1,4 @@
-import { writeFile, mkdir, rename } from 'node:fs/promises';
+import { writeFile, mkdir } from 'node:fs/promises';
 import { existsSync, statSync } from 'node:fs';
 import { join, basename, extname } from 'node:path';
 import type { ProviderAdapter, IngestEvent, FileFormat, NoteFrontmatter } from '@sanji/shared';
@@ -293,12 +293,29 @@ export class IngestService {
     };
     const composed = `---\n${serializeFrontmatter(fm as unknown as Record<string, unknown>)}---\n\n${result.body.trimStart()}\n`;
 
+    // Atomic exclusive create at the commit point: O_CREAT | O_EXCL fails
+    // if the target exists. The pre-flight existsSync check at the top of
+    // process() handles the common case (skip a file that is already in
+    // the inbox) but does NOT close the race window between extract+rewrite
+    // (which can take 30+ seconds for a large PDF) and the final write.
+    // Without this guard, fs.rename would silently overwrite a note that a
+    // concurrent process / parallel ingest created in the meantime. With
+    // wx, we surface a clear error and preserve both files: the racer's
+    // note stays at targetAbs, ours is dropped (the original is still
+    // archived under .sanji/originals/ for the user to retry).
     try {
       await mkdir(join(this.deps.paths.vault, 'inbox'), { recursive: true });
-      const tmp = `${targetAbs}.tmp`;
-      await writeFile(tmp, composed, 'utf-8');
-      await rename(tmp, targetAbs);
+      await writeFile(targetAbs, composed, { encoding: 'utf-8', flag: 'wx' });
     } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === 'EEXIST') {
+        yield {
+          kind: 'error', fileId: job.fileId, sourceName: name,
+          phase: 'write',
+          message: `A file already exists at ${target}; the ingest you started was raced by another write. The original is preserved at ${originalForFrontmatter}.`,
+        };
+        return;
+      }
       yield {
         kind: 'error', fileId: job.fileId, sourceName: name,
         phase: 'write', message: `Could not write inbox/${target}: ${(err as Error).message}.`,
