@@ -129,6 +129,7 @@ export function ChatShell({
             onAbort={chat.abort}
             streaming={chat.streaming}
             onClear={handleClearFromComposer}
+            onActivity={chat.noteActivity}
           />
         </main>
 

@@ -1,4 +1,4 @@
-import { useState, type KeyboardEvent } from 'react';
+import { useRef, useState, type KeyboardEvent } from 'react';
 import { ArrowUp, Square } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -18,6 +18,12 @@ export interface ComposerProps {
    * /clear falls through to a normal message send.
    */
   onClear?: () => void;
+  /**
+   * Called (debounced to once per 5s) on every keystroke in the textarea.
+   * Wired in ChatShell to useChat.noteActivity so typing in the composer
+   * defers the idle auto-clear without firing setState noise on every key.
+   */
+  onActivity?: () => void;
 }
 
 /**
@@ -31,8 +37,14 @@ export function isClearCommand(text: string): boolean {
   return /^\s*\/clear\s*$/.test(text);
 }
 
-export function Composer({ onSubmit, onAbort, streaming, model, onClear }: ComposerProps) {
+export function Composer({ onSubmit, onAbort, streaming, model, onClear, onActivity }: ComposerProps) {
   const [text, setText] = useState('');
+  // Debounce the activity callback to once per 5 seconds. Typing fires
+  // onChange on every keystroke; we don't want each keystroke to bubble
+  // up to a hook setState chain. Five seconds is well under any
+  // realistic idle threshold (≥1 minute) so the watcher still resets
+  // promptly while typing.
+  const lastActivityRef = useRef<number>(0);
 
   function tryFire() {
     const trimmed = text.trim();
@@ -58,7 +70,16 @@ export function Composer({ onSubmit, onAbort, streaming, model, onClear }: Compo
       <div className="mx-auto flex max-w-3xl flex-col rounded-lg border border-border bg-card transition-colors focus-within:border-ring/60">
         <Textarea
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            setText(e.target.value);
+            if (onActivity) {
+              const now = Date.now();
+              if (now - lastActivityRef.current > 5000) {
+                lastActivityRef.current = now;
+                onActivity();
+              }
+            }
+          }}
           onKeyDown={handleKeyDown}
           placeholder="Ask anything…   ⌘↵ to send"
           rows={2}

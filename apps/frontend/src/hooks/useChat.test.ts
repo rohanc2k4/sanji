@@ -1,6 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import type { Turn } from '@/components/applyEvent';
-import { applyUsageUpdate, makeSessionBreakTurn, turnsToHistory, ZERO_USAGE } from './useChat';
+import { applyUsageUpdate, computeIdleMs, makeSessionBreakTurn, turnsToHistory, ZERO_USAGE } from './useChat';
+
+describe('computeIdleMs', () => {
+  it('converts minutes to milliseconds', () => {
+    expect(computeIdleMs(30)).toBe(30 * 60 * 1000);
+  });
+  it('clamps to a positive number when given zero or negative', () => {
+    expect(computeIdleMs(0)).toBe(60 * 1000); // floor: 1 minute
+    expect(computeIdleMs(-5)).toBe(60 * 1000);
+  });
+  it('floors fractional minutes to integer minutes before converting', () => {
+    expect(computeIdleMs(1.7)).toBe(60 * 1000);
+  });
+});
 
 describe('turnsToHistory', () => {
   it('flattens user + assistant turns and appends the latest user message', () => {

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChatMessage } from '@sanji/shared';
 import { chatStream } from '@/api/chat';
+import { runIdleWatcher, type IdleWatcher } from '@/chat/auto-clear';
 import { sessionMessageFor, type SessionTrigger } from '@/chat/session-messages';
 import {
   applyEvent,
@@ -58,6 +59,17 @@ export interface UsageState {
 export const ZERO_USAGE: UsageState = { inputTokens: 0, outputTokens: 0 };
 
 /**
+ * Convert an `idleMinutes` config value into milliseconds for the idle
+ * watcher. Floors fractional minutes and clamps anything ≤ 0 to a 1-minute
+ * floor so a misconfigured `auto_clear_idle_minutes = 0` doesn't immediately
+ * fire a clear on every render. Exported pure for testing.
+ */
+export function computeIdleMs(idleMinutes: number): number {
+  const minutes = Math.max(1, Math.floor(idleMinutes || 0));
+  return minutes * 60 * 1000;
+}
+
+/**
  * Pure reducer for the accumulated-usage state. Exported so the hook's
  * accumulation behavior is unit-testable without standing up a React
  * renderer (this codebase doesn't pull in @testing-library/react). The
@@ -97,9 +109,24 @@ export interface UseChatResult {
    * fresh conversation that begins after the divider.
    */
   clear: (opts?: { trigger?: SessionTrigger }) => void;
+  /**
+   * Reset the idle-watcher countdown. Called internally on every send-start
+   * and exposed so the Composer can debounce-call it on user typing — both
+   * count as activity that should defer the idle auto-clear.
+   */
+  noteActivity: () => void;
 }
 
-export function useChat(): UseChatResult {
+export interface UseChatOpts {
+  /**
+   * Minutes of no activity before the idle auto-clear fires. Defaults to 30
+   * so consumers that don't pass anything still get the documented behavior.
+   * Task 6 will wire this from `config.chat.autoClearIdleMinutes`.
+   */
+  idleMinutes?: number;
+}
+
+export function useChat(opts?: UseChatOpts): UseChatResult {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [streaming, setStreaming] = useState(false);
   const [elapsedSec, setElapsedSec] = useState(0);
@@ -112,6 +139,20 @@ export function useChat(): UseChatResult {
   // us capture that snapshot without depending on a stale closure.
   const turnsRef = useRef<Turn[]>([]);
   useEffect(() => { turnsRef.current = turns; }, [turns]);
+
+  // Cross-handler coordination for the idle auto-clear:
+  //   - streamingRef mirrors `streaming` so the watcher's onFire callback
+  //     can read the latest value synchronously without re-arming on every
+  //     render.
+  //   - pendingClearRef captures a deferred trigger when the watcher fires
+  //     mid-stream; the SSE done handler consumes it after streaming flips
+  //     false so the divider lands on a quiet conversation.
+  //   - idleWatcherRef holds the active watcher so noteActivity can reset
+  //     it imperatively.
+  const streamingRef = useRef<boolean>(false);
+  const pendingClearRef = useRef<SessionTrigger | null>(null);
+  const idleWatcherRef = useRef<IdleWatcher | null>(null);
+  useEffect(() => { streamingRef.current = streaming; }, [streaming]);
 
   // Tick elapsedSec every 250ms while streaming. Cleared on stream close so
   // the value freezes on the last sample rather than continuing to climb.
@@ -149,6 +190,9 @@ export function useChat(): UseChatResult {
     startedAtRef.current = performance.now();
     setElapsedSec(0);
     setStreaming(true);
+    // Sending counts as activity — reset the idle countdown so a long
+    // back-and-forth never trips the auto-clear mid-conversation.
+    idleWatcherRef.current?.reset();
     const ctrl = new AbortController();
     ctrlRef.current = ctrl;
     (async () => {
@@ -177,6 +221,15 @@ export function useChat(): UseChatResult {
         if (ctrlRef.current === ctrl) {
           ctrlRef.current = null;
           setStreaming(false);
+          // If the idle watcher fired mid-stream, it stashed the trigger
+          // here. Now that we've quieted the conversation, consume it and
+          // run the deferred clear. Snapshot + null first so a synchronous
+          // re-entry into clear() doesn't re-fire from the same pointer.
+          const pending = pendingClearRef.current;
+          pendingClearRef.current = null;
+          if (pending !== null) {
+            clear({ trigger: pending });
+          }
         }
       }
     })();
@@ -205,5 +258,34 @@ export function useChat(): UseChatResult {
     setStreaming(false);
   }, []);
 
-  return { turns, streaming, elapsedSec, usage, send, abort, clear };
+  const noteActivity = useCallback(() => {
+    idleWatcherRef.current?.reset();
+  }, []);
+
+  // Arm the idle watcher once on mount; re-arm if idleMinutes changes. The
+  // onFire callback checks streamingRef synchronously: if the user is
+  // mid-stream when the timer trips, we stash the trigger and let the SSE
+  // done handler land the divider once the stream closes (a quiet
+  // conversation is the right surface for the cat-voiced break message).
+  const idleMinutes = opts?.idleMinutes ?? 30;
+  useEffect(() => {
+    const idleMs = computeIdleMs(idleMinutes);
+    const watcher = runIdleWatcher({
+      idleMs,
+      onFire: () => {
+        if (streamingRef.current) {
+          pendingClearRef.current = 'idle';
+          return;
+        }
+        clear({ trigger: 'idle' });
+      },
+    });
+    idleWatcherRef.current = watcher;
+    return () => {
+      watcher.cancel();
+      idleWatcherRef.current = null;
+    };
+  }, [idleMinutes, clear]);
+
+  return { turns, streaming, elapsedSec, usage, send, abort, clear, noteActivity };
 }
