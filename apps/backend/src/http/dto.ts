@@ -19,7 +19,12 @@ export function configToDto(c: Config): ConfigDto {
       chunkOverlapTokens: c.indexing.chunk_overlap_tokens,
       embeddingModel: c.indexing.embedding_model,
     },
+    ingestion: { contextualRetrieval: c.ingestion.contextual_retrieval },
     ui: { theme: c.ui.theme, mascot: c.ui.mascot },
+    chat: {
+      autoClearThreshold: c.chat.autoClearThreshold,
+      autoClearIdleMinutes: c.chat.autoClearIdleMinutes,
+    },
   };
 }
 
@@ -41,6 +46,14 @@ export function dtoToConfig(dto: ConfigDto, current: Config): Config {
       chunk_overlap_tokens: dto.indexing.chunkOverlapTokens,
       embedding_model: dto.indexing.embeddingModel,
     },
+    // max_upload_bytes is a file-only knob in v0.1 (no DTO surface); preserve
+    // whatever the on-disk config has so a PATCH /api/config from the
+    // frontend does not silently reset it to the schema default.
+    ingestion: {
+      contextual_retrieval: dto.ingestion?.contextualRetrieval ?? false,
+      max_upload_bytes: current.ingestion.max_upload_bytes,
+    },
     ui: { theme: dto.ui.theme, mascot: dto.ui.mascot },
+    chat: dto.chat ?? { autoClearThreshold: 0.75, autoClearIdleMinutes: 30 },
   };
 }

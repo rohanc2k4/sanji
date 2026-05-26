@@ -58,4 +58,14 @@ describe('loadSkills', () => {
     const asks = skills.filter((s) => s.trigger === '/ask');
     expect(asks).toHaveLength(1);
   });
+
+  it('loads the bundled ingest skill', async () => {
+    const paths = setup();
+    const { skills } = await loadSkills(paths);
+    const ingest = skills.find((s) => s.name === 'ingest');
+    expect(ingest).toBeDefined();
+    expect(ingest?.trigger).toBe('/ingest');
+    expect(ingest?.body.length).toBeGreaterThan(500); // body has substantial content
+    expect(ingest?.body).toContain('Sanji ingest skill');
+  });
 });

@@ -8,14 +8,20 @@ import { loadOrInitConfig } from './config/loader.js';
 import { FakeEmbedder, type Embedder } from './embeddings/embedder.js';
 import { TransformersEmbedder } from './embeddings/transformers.js';
 import { makeAdapter } from './llm/factory.js';
+import { makeBlurbLlm } from './retrieval/contextual-blurb-deps.js';
+import { makeRewriterLlm } from './retrieval/rewriter-deps.js';
+import { rewriteQuery } from './retrieval/rewriter.js';
 import { runAgent } from './agent/run.js';
 import { loadSkills } from './skills/loader.js';
 import { Registry } from './tools/registry.js';
 import { readNoteTool } from './tools/read-note.js';
+import { hybridSearchTool } from './tools/hybrid-search.js';
 import { searchVaultTool } from './tools/search-vault.js';
 import { semanticSearchTool } from './tools/semantic-search.js';
 import { getNeighborsTool } from './tools/get-neighbors.js';
 import { writeNoteTool } from './tools/write-note.js';
+import { listVaultTool } from './tools/list-vault.js';
+import { grepVaultTool } from './tools/grep-vault.js';
 import type { ToolContext } from './tools/types.js';
 import type { ChatEvent, ChatOpts, ProviderAdapter } from '@sanji/shared';
 
@@ -59,11 +65,18 @@ program
     const cfg = loadOrInitConfig(paths);
     const db = openDb(paths.indexDb);
     const embedder = buildEmbedder();
+    const adapter: ProviderAdapter = process.env.SANJI_OFFLINE_FAKE_LLM === '1'
+      ? new OfflineFakeAdapter()
+      : makeAdapter(cfg);
     try {
       runMigrations(db);
       const ix = new Indexer(db, embedder, {
         chunkSizeTokens: cfg.indexing.chunk_size_tokens,
         chunkOverlapTokens: cfg.indexing.chunk_overlap_tokens,
+        // Contextual retrieval is opt-in via [ingestion] contextual_retrieval.
+        ...(cfg.ingestion.contextual_retrieval
+          ? { blurbLlm: makeBlurbLlm(adapter) }
+          : {}),
       });
       const stats = await ix.indexAll(paths.vault);
       console.log(
@@ -143,12 +156,22 @@ program
 
       const registry = new Registry();
       registry.register(readNoteTool);
+      registry.register(hybridSearchTool);
       registry.register(searchVaultTool);
       registry.register(semanticSearchTool);
       registry.register(getNeighborsTool);
       registry.register(writeNoteTool);
+      registry.register(listVaultTool);
+      registry.register(grepVaultTool);
 
-      const ctx: ToolContext = { paths, db, repo: new IndexRepo(db), embedder };
+      const rewriterLlm = makeRewriterLlm(adapter);
+      const ctx: ToolContext = {
+        paths,
+        db,
+        repo: new IndexRepo(db),
+        embedder,
+        rewriter: (q: string) => rewriteQuery(q, { llm: rewriterLlm }),
+      };
 
       const stream = runAgent(
         { adapter, registry, ctx, skills, defaultModel: cfg.models.default },

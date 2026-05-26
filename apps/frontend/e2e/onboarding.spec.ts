@@ -23,9 +23,16 @@ test.afterEach(() => {
 async function walkOnboardingThroughIndexing(page: import('@playwright/test').Page) {
   await page.goto('/');
 
-  await expect(page.getByRole('heading', { name: /where does your vault live/i })).toBeVisible({
-    timeout: 15_000,
-  });
+  // Backend kind:'ready' persists across tests + across dev-server reuses;
+  // a fresh page.goto can land on either onboarding or the ChatShell. Race
+  // both, branch on whichever wins.
+  const onboardingHeading = page.getByRole('heading', { name: /where does your vault live/i });
+  const sourcesLabel = page.getByText(/^sources$/i);
+  await Promise.any([
+    onboardingHeading.waitFor({ state: 'visible', timeout: 15_000 }),
+    sourcesLabel.waitFor({ state: 'visible', timeout: 15_000 }),
+  ]);
+  if (await sourcesLabel.isVisible()) return;
 
   // ---- Vault step ----
   await page.getByLabel(/vault path/i).fill(vault);
@@ -41,17 +48,9 @@ async function walkOnboardingThroughIndexing(page: import('@playwright/test').Pa
   await expect(page.getByText(/credentials look good/i)).toBeVisible({ timeout: 30_000 });
   await page.getByRole('button', { name: /^continue$/i }).click();
 
-  // ---- Model step (recommended preselected) ----
-  await expect(page.getByRole('heading', { name: /default model/i })).toBeVisible();
-  await page.getByRole('button', { name: /^continue$/i }).click();
-
-  // ---- Calendar (skip) ----
-  await expect(page.getByRole('heading', { name: /add a calendar/i })).toBeVisible();
-  await page.getByRole('button', { name: /^continue$/i }).click();
-
-  // ---- Tavily (skip) ----
-  await expect(page.getByRole('heading', { name: /tavily/i })).toBeVisible();
-  await page.getByRole('button', { name: /^continue$/i }).click();
+  // (Model step removed 2026-05-07 — picker now lives in the chat header,
+  // sticky per conversation. Calendar + Tavily steps removed 2026-05-06 —
+  // deferred to v0.3.)
 
   // ---- Indexing step ----
   // Clicking "Start indexing" fires initOnboarding which writes the config

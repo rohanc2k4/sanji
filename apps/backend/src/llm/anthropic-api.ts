@@ -1,5 +1,11 @@
 import Anthropic from '@anthropic-ai/sdk';
-import type { ChatEvent, ChatOpts, ModelInfo, ProviderAdapter } from '@sanji/shared';
+import type {
+  ChatEvent,
+  ChatOpts,
+  ModelInfo,
+  OneShotOpts,
+  ProviderAdapter,
+} from '@sanji/shared';
 
 const KNOWN_MODELS: ModelInfo[] = [
   { id: 'claude-opus-4-7', displayName: 'Claude Opus 4.7' },
@@ -14,14 +20,19 @@ export class AnthropicApiAdapter implements ProviderAdapter {
   ) {}
 
   async *chat(opts: ChatOpts): AsyncIterable<ChatEvent> {
-    const stream = this.client.messages.stream({
-      model: opts.model,
-      max_tokens: opts.maxTokens ?? 1024,
-      system: opts.system,
-      messages: opts.messages
-        .filter((m) => m.role !== 'system')
-        .map((m) => ({ role: m.role, content: m.content })),
-    } as Anthropic.MessageStreamParams);
+    const stream = this.client.messages.stream(
+      {
+        model: opts.model,
+        max_tokens: opts.maxTokens ?? 1024,
+        system: opts.system,
+        messages: opts.messages
+          .filter((m) => m.role !== 'system')
+          .map((m) => ({ role: m.role, content: m.content })),
+      } as Anthropic.MessageStreamParams,
+      // Forward the AbortSignal to the underlying fetch so cancel() unblocks
+      // an in-flight HTTP request instead of waiting for the SDK to finish.
+      opts.signal ? { signal: opts.signal } : undefined,
+    );
 
     let usage: { input: number; output: number } | undefined;
     for await (const ev of stream as AsyncIterable<any>) {
@@ -37,6 +48,34 @@ export class AnthropicApiAdapter implements ProviderAdapter {
 
   async getAvailableModels(): Promise<ModelInfo[]> {
     return KNOWN_MODELS;
+  }
+
+  async oneShot(opts: OneShotOpts): Promise<string> {
+    // NOTE: prompt caching intentionally not wired on this branch. SDK 0.32.1
+    // exposes caching only under `client.beta.promptCaching.messages.create`
+    // (with `PromptCachingBetaTextBlockParam`), and the standard
+    // `messages.create` `TextBlockParam` does NOT accept `cache_control`.
+    // Attaching it to the standard call would either 400 or be silently
+    // dropped. We drop the `s.cache` hint here and pay full per-chunk cost
+    // when contextual retrieval is enabled. v0.2 backlog: route through
+    // `client.beta.promptCaching.messages.create` (or the SDK's native
+    // `cache_control` support once it lands on the standard API) so the
+    // parent-document segment is cached across chunks of the same note.
+    const content: Array<{ type: 'text'; text: string }> = opts.segments.map((s) => ({
+      type: 'text',
+      text: s.text,
+    }));
+    const resp = await this.client.messages.create({
+      model: opts.model,
+      max_tokens: opts.maxTokens ?? 256,
+      temperature: opts.temperature ?? 0,
+      ...(opts.system ? { system: opts.system } : {}),
+      messages: [{ role: 'user', content: content as unknown as Anthropic.TextBlockParam[] }],
+    } as Anthropic.MessageCreateParamsNonStreaming);
+    const first = resp.content.find((b: Anthropic.ContentBlock) => b.type === 'text') as
+      | { type: 'text'; text: string }
+      | undefined;
+    return first?.text ?? '';
   }
 
   async testCredentials(): Promise<{ ok: boolean; reason?: string }> {

@@ -8,9 +8,6 @@ import {
 } from './reducer';
 import { VaultStep } from './steps/VaultStep';
 import { ProviderStep } from './steps/ProviderStep';
-import { ModelStep } from './steps/ModelStep';
-import { CalendarStep } from './steps/CalendarStep';
-import { TavilyStep } from './steps/TavilyStep';
 import { IndexingStep } from './steps/IndexingStep';
 import { DoneStep } from './steps/DoneStep';
 
@@ -18,15 +15,7 @@ export interface OnboardingFlowProps {
   onComplete: () => void;
 }
 
-const STEP_ORDER: OnboardingStep[] = [
-  'vault',
-  'provider',
-  'model',
-  'calendar',
-  'tavily',
-  'indexing',
-  'done',
-];
+const STEP_ORDER: OnboardingStep[] = ['vault', 'provider', 'indexing', 'done'];
 
 const STEP_TITLES: Record<OnboardingStep, { title: string; subtitle: string }> = {
   vault: {
@@ -36,18 +25,6 @@ const STEP_TITLES: Record<OnboardingStep, { title: string; subtitle: string }> =
   provider: {
     title: 'Which Claude do you want to use?',
     subtitle: 'Use your existing Claude subscription or paste an Anthropic API key.',
-  },
-  model: {
-    title: 'Pick a default model.',
-    subtitle: 'Sonnet for most things; Opus when you want extra horsepower.',
-  },
-  calendar: {
-    title: 'Add a calendar (optional).',
-    subtitle: 'Sanji can read iCal feeds for daily planning. You can add more later.',
-  },
-  tavily: {
-    title: 'Tavily web search (optional).',
-    subtitle: 'Paste a key for /research-style web grounding. Skip if you only want vault access.',
   },
   indexing: {
     title: 'Indexing your notes…',
@@ -124,12 +101,6 @@ function StepBody({ state, dispatch }: StepBodyProps): ReactNode {
       return <VaultStep {...props} />;
     case 'provider':
       return <ProviderStep {...props} />;
-    case 'model':
-      return <ModelStep {...props} />;
-    case 'calendar':
-      return <CalendarStep {...props} />;
-    case 'tavily':
-      return <TavilyStep {...props} />;
     case 'indexing':
       return <IndexingStep {...props} />;
     case 'done':

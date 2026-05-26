@@ -1,5 +1,6 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { describe, expect, it, afterEach } from 'vitest';
+import { parseConfig } from '@sanji/shared';
 import { makeTmpDir } from '../../tests/helpers/tmp-db.js';
 import { loadOrInitConfig, saveConfig } from './loader.js';
 import { resolveVaultPaths } from './paths.js';
@@ -36,6 +37,47 @@ describe('loadOrInitConfig', () => {
     mkdirSync(paths.sanjiDir, { recursive: true });
     writeFileSync(paths.configFile, '[provider]\nmode = "openai"\n');
     expect(() => loadOrInitConfig(paths)).toThrow();
+  });
+});
+
+describe('parseConfig [chat] section', () => {
+  it('parses [chat] section with defaults when absent', () => {
+    const cfg = parseConfig(`
+[provider]
+mode = "claude-code"
+[ingestion]
+contextual_retrieval = false
+`);
+    expect(cfg.chat.autoClearThreshold).toBe(0.75);
+    expect(cfg.chat.autoClearIdleMinutes).toBe(30);
+  });
+
+  it('honors user-provided [chat] values', () => {
+    const cfg = parseConfig(`
+[provider]
+mode = "claude-code"
+[ingestion]
+contextual_retrieval = false
+[chat]
+auto_clear_threshold = 0.85
+auto_clear_idle_minutes = 60
+`);
+    expect(cfg.chat.autoClearThreshold).toBe(0.85);
+    expect(cfg.chat.autoClearIdleMinutes).toBe(60);
+  });
+
+  it('clamps threshold to [0,1] and idle to a positive number', () => {
+    const cfg = parseConfig(`
+[provider]
+mode = "claude-code"
+[ingestion]
+contextual_retrieval = false
+[chat]
+auto_clear_threshold = 2.0
+auto_clear_idle_minutes = -5
+`);
+    expect(cfg.chat.autoClearThreshold).toBe(1.0);
+    expect(cfg.chat.autoClearIdleMinutes).toBe(1);
   });
 });
 

@@ -35,4 +35,22 @@ describe('parseNote', () => {
     expect(out.note.title).toBeNull();
     expect(out.wikilinks).toEqual([]);
   });
+
+  it('recovers when an unquoted title contains a colon (auto-quote retry)', () => {
+    const src = `---\ntitle: SVD: Subspaces, Rank, and Determinant\ntype: problem\n---\n\nBody.\n`;
+    const out = parseNote('p.md', src, 1);
+    expect(out.note.title).toBe('SVD: Subspaces, Rank, and Determinant');
+    expect(out.note.frontmatter).toMatchObject({ type: 'problem' });
+    expect(out.note.body.trim()).toBe('Body.');
+  });
+
+  it('falls back to body-only when frontmatter is unrecoverable', () => {
+    // A truly malformed frontmatter that the sanitizer can't fix — make sure
+    // we don't crash and we still return the note with a parseable body.
+    const src = `---\n: : :\n---\n\n# Title\n\nBody.\n`;
+    const out = parseNote('p.md', src, 1);
+    // Either frontmatter is null or the sanitizer salvages something; either is fine.
+    // The hard requirement is no throw and body is recoverable.
+    expect(out.note.body).toContain('Body');
+  });
 });

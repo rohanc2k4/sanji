@@ -36,18 +36,57 @@ export const ConfigSchema = z
         chunk_overlap_tokens: 50,
         embedding_model: 'Xenova/all-MiniLM-L6-v2',
       }),
+    ingestion: z
+      .object({
+        // R1 Anthropic contextual retrieval. When true, every changed chunk
+        // sends the full parent note body and the chunk text to the configured
+        // LLM at index time. Improves retrieval at the cost of LLM tokens and
+        // sending note bodies to the provider. Default off in v0.1; flip via
+        // .sanji/config.toml. No UI surface for it in v0.1 (file-only).
+        contextual_retrieval: z.boolean().default(false),
+        // Hard cap on the multipart / text body the ingest routes will accept.
+        // Defends against backend OOM from one upload buffering the full body
+        // in memory before extraction. Default 25 MiB — comfortably covers a
+        // 200-page PDF lecture deck but rejects pathological uploads.
+        max_upload_bytes: z
+          .number()
+          .int()
+          .positive()
+          .default(25 * 1024 * 1024),
+      })
+      .default({ contextual_retrieval: false, max_upload_bytes: 25 * 1024 * 1024 }),
     ui: z
       .object({
         theme: z.enum(['auto', 'light', 'dark']).default('auto'),
         mascot: z.enum(['chatty', 'quiet', 'off']).default('chatty'),
       })
       .default({ theme: 'auto', mascot: 'chatty' }),
+    chat: z
+      .object({
+        autoClearThreshold: z.number().min(0).max(1),
+        autoClearIdleMinutes: z.number().int().min(1),
+      })
+      .default({ autoClearThreshold: 0.75, autoClearIdleMinutes: 30 }),
   })
   .strict();
 
 export type Config = z.infer<typeof ConfigSchema>;
 
 export function parseConfig(toml: string): Config {
-  const raw = parseToml(toml);
+  const raw = parseToml(toml) as Record<string, unknown>;
+  // Pre-process [chat] block: convert snake_case keys to camelCase, clamp
+  // values into the schema's accepted range so power users who fat-finger a
+  // value in the TOML get a sane default rather than a Zod throw.
+  const rawChat = (raw.chat ?? {}) as Record<string, unknown>;
+  const rawThreshold = typeof rawChat.auto_clear_threshold === 'number'
+    ? rawChat.auto_clear_threshold
+    : 0.75;
+  const rawIdle = typeof rawChat.auto_clear_idle_minutes === 'number'
+    ? rawChat.auto_clear_idle_minutes
+    : 30;
+  raw.chat = {
+    autoClearThreshold: Math.max(0, Math.min(1, rawThreshold)),
+    autoClearIdleMinutes: Math.max(1, Math.floor(rawIdle)),
+  };
   return ConfigSchema.parse(raw);
 }

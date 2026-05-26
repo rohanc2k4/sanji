@@ -26,9 +26,25 @@ chunk_size_tokens = 500
 chunk_overlap_tokens = 50
 embedding_model = "Xenova/all-MiniLM-L6-v2"
 
+[ingestion]
+# R1 Anthropic contextual retrieval. When true, every changed chunk sends the
+# full parent note body and the chunk text to the configured LLM at index
+# time. Improves retrieval (~25-35% recall lift in Anthropic's results) at
+# the cost of LLM tokens per chunk and sending note bodies to the provider.
+# Default off in v0.1.
+contextual_retrieval = false
+
 [ui]
 theme = "auto"
 mascot = "chatty"
+
+[chat]
+# Auto-clear thresholds for the in-app chat. When context window usage crosses
+# auto_clear_threshold (fraction in [0,1]) AND the conversation has been idle
+# for auto_clear_idle_minutes, Sanji offers to clear history. Tune both knobs
+# for power users who want stricter or looser auto-clear behavior.
+auto_clear_threshold = 0.75
+auto_clear_idle_minutes = 30
 `;
 
 export function loadOrInitConfig(paths: VaultPaths): Config {
@@ -51,7 +67,12 @@ export function saveConfig(paths: VaultPaths, cfg: Config): void {
     calendar: cfg.calendar,
     search: cfg.search,
     indexing: cfg.indexing,
+    ingestion: cfg.ingestion,
     ui: cfg.ui,
+    chat: {
+      auto_clear_threshold: cfg.chat.autoClearThreshold,
+      auto_clear_idle_minutes: cfg.chat.autoClearIdleMinutes,
+    },
   };
   writeFileSync(paths.configFile, tomlStringify(serializable), 'utf8');
 }

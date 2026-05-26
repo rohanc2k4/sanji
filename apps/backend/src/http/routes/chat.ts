@@ -1,18 +1,27 @@
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { z } from 'zod';
-import type { ChatEvent } from '@sanji/shared';
+import type { ChatEvent, ChatMessage } from '@sanji/shared';
 import type { AgentDependencies, AgentStats } from '../../agent/run.js';
 import { runAgent as defaultRunAgent } from '../../agent/run.js';
 
+const MessageSchema = z.object({
+  role: z.enum(['user', 'assistant', 'system']),
+  content: z.string(),
+});
+
 const Body = z.object({
-  message: z.string().min(1),
+  messages: z.array(MessageSchema).min(1).refine(
+    (msgs) => msgs[msgs.length - 1]!.role === 'user',
+    { message: 'last message must have role=user' },
+  ),
   model: z.string().optional(),
 });
 
 type RunAgentFn = (
   deps: AgentDependencies,
-  msg: string,
+  input: string | ChatMessage[],
+  signal?: AbortSignal,
 ) => AsyncGenerator<ChatEvent, AgentStats, void>;
 
 export function chatRoute(opts: { deps: AgentDependencies; runAgent?: RunAgentFn }) {
@@ -32,9 +41,22 @@ export function chatRoute(opts: { deps: AgentDependencies; runAgent?: RunAgentFn
       ? { ...opts.deps, defaultModel: parsed.data.model }
       : opts.deps;
 
+    // TEMP diagnostic: log incoming history length + roles so we can verify
+    // conversation memory is reaching the backend. Remove after smoke confirms
+    // the regression has a real fix.
+    process.stderr.write(
+      `[chat] received ${parsed.data.messages.length} message(s): ` +
+        parsed.data.messages.map((m) => m.role).join(',') + '\n',
+    );
+
+    // Forward the client-disconnect signal into runAgent → adapter.chat so
+    // a cancel/resend actually stops the underlying SDK call instead of
+    // letting it complete server-side and burn provider cost on a
+    // request the user already abandoned.
+    const clientSignal = c.req.raw.signal;
     return streamSSE(c, async (stream) => {
       try {
-        for await (const ev of runAgent(deps, parsed.data.message)) {
+        for await (const ev of runAgent(deps, parsed.data.messages, clientSignal)) {
           await stream.writeSSE({ event: ev.type, data: JSON.stringify(ev) });
         }
       } catch (err) {

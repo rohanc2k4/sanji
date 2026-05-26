@@ -27,22 +27,24 @@ describe('sanji CLI', () => {
   });
 
   it('index walks the vault and prints stats', async () => {
-    await runCli(['--vault', FIXTURE_VAULT, 'init']);
-    const { stdout } = await runCli(['--vault', FIXTURE_VAULT, 'index']);
+    await runCli(['--vault', FIXTURE_VAULT, 'init'], { SANJI_OFFLINE_FAKE_LLM: '1' });
+    const { stdout } = await runCli(['--vault', FIXTURE_VAULT, 'index'], {
+      SANJI_OFFLINE_FAKE_LLM: '1',
+    });
     expect(stdout).toMatch(/notes: 6/);
     expect(stdout).toMatch(/chunks:/);
   });
 
   it('search returns FTS5 hits', async () => {
-    await runCli(['--vault', FIXTURE_VAULT, 'init']);
-    await runCli(['--vault', FIXTURE_VAULT, 'index']);
+    await runCli(['--vault', FIXTURE_VAULT, 'init'], { SANJI_OFFLINE_FAKE_LLM: '1' });
+    await runCli(['--vault', FIXTURE_VAULT, 'index'], { SANJI_OFFLINE_FAKE_LLM: '1' });
     const { stdout } = await runCli(['--vault', FIXTURE_VAULT, 'search', 'argocd']);
     expect(stdout).toMatch(/argocd|policy/i);
   });
 
   it('ssearch returns vec0 hits', async () => {
-    await runCli(['--vault', FIXTURE_VAULT, 'init']);
-    await runCli(['--vault', FIXTURE_VAULT, 'index']);
+    await runCli(['--vault', FIXTURE_VAULT, 'init'], { SANJI_OFFLINE_FAKE_LLM: '1' });
+    await runCli(['--vault', FIXTURE_VAULT, 'index'], { SANJI_OFFLINE_FAKE_LLM: '1' });
     const { stdout } = await runCli(['--vault', FIXTURE_VAULT, 'ssearch', 'deployment']);
     expect(stdout).toMatch(/distance/);
   });

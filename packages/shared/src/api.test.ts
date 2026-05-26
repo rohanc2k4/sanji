@@ -24,7 +24,9 @@ describe('api types', () => {
       calendar: { urls: [], pollIntervalMinutes: 5 },
       search: { tavilyApiKey: '' },
       indexing: { chunkSizeTokens: 500, chunkOverlapTokens: 50, embeddingModel: 'Xenova/all-MiniLM-L6-v2' },
+      ingestion: { contextualRetrieval: false },
       ui: { theme: 'auto', mascot: 'chatty' },
+      chat: { autoClearThreshold: 0.75, autoClearIdleMinutes: 30 },
     };
     expect(cfg.provider.mode).toBe('claude-code');
   });

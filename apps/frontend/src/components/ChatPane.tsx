@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState, type DragEvent } from 'react';
 import { ChatMessage } from './ChatMessage';
 import { Mascot } from '@/mascot/Mascot';
 import type { Turn } from './applyEvent';
@@ -6,17 +6,48 @@ import type { Turn } from './applyEvent';
 export interface ChatPaneProps {
   turns: Turn[];
   streaming: boolean;
+  elapsedSec?: number;
+  onFilesDropped: (files: File[]) => void;
 }
 
-export function ChatPane({ turns, streaming }: ChatPaneProps) {
+export function ChatPane({ turns, streaming, elapsedSec, onFilesDropped }: ChatPaneProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
+  const dragDepth = useRef(0);
+  const [isDragOver, setIsDragOver] = useState(false);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [turns, streaming]);
 
+  function onDragEnter(e: DragEvent<HTMLDivElement>) {
+    if (![...e.dataTransfer.types].includes('Files')) return;
+    dragDepth.current += 1;
+    setIsDragOver(true);
+  }
+  function onDragLeave(_e: DragEvent<HTMLDivElement>) {
+    dragDepth.current = Math.max(0, dragDepth.current - 1);
+    if (dragDepth.current === 0) setIsDragOver(false);
+  }
+  function onDragOver(e: DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+  }
+  function onDrop(e: DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    dragDepth.current = 0;
+    setIsDragOver(false);
+    const files = [...e.dataTransfer.files];
+    if (files.length > 0) onFilesDropped(files);
+  }
+
   return (
-    <div className="relative flex flex-1 flex-col overflow-hidden">
+    <div
+      data-testid="chat-pane"
+      className="relative flex flex-1 flex-col overflow-hidden"
+      onDragEnter={onDragEnter}
+      onDragLeave={onDragLeave}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+    >
       <div className="flex-1 overflow-y-auto">
         {turns.length === 0 ? (
           <EmptyState />
@@ -27,6 +58,11 @@ export function ChatPane({ turns, streaming }: ChatPaneProps) {
                 key={i}
                 turn={turn}
                 streaming={streaming && i === turns.length - 1 && turn.role === 'assistant'}
+                elapsedSec={
+                  streaming && i === turns.length - 1 && turn.role === 'assistant'
+                    ? elapsedSec
+                    : undefined
+                }
               />
             ))}
             <div ref={bottomRef} />
@@ -34,6 +70,16 @@ export function ChatPane({ turns, streaming }: ChatPaneProps) {
         )}
       </div>
       <Mascot mode="chatty" chatStreaming={streaming} lastError={null} />
+      {isDragOver && (
+        <div
+          className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center border-2 border-dashed border-primary bg-primary/10"
+          data-testid="chat-drop-overlay"
+        >
+          <div className="rounded-lg bg-card px-4 py-2 text-sm font-medium text-foreground shadow-sm">
+            Drop to ingest
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,6 +1,40 @@
 import { z } from 'zod';
 import { query, tool, createSdkMcpServer } from '@anthropic-ai/claude-agent-sdk';
-import type { ChatEvent, ChatOpts, ChatTool, ModelInfo, ProviderAdapter } from '@sanji/shared';
+import type {
+  ChatEvent,
+  ChatMessage,
+  ChatOpts,
+  ChatTool,
+  ModelInfo,
+  OneShotOpts,
+  ProviderAdapter,
+} from '@sanji/shared';
+
+/**
+ * Render the prior conversation turns + the latest user message into a single
+ * prompt string for the Claude Agent SDK's `query()` API.
+ *
+ * Why this exists: SDK 0.1.77's `query({ prompt, ... })` accepts either a string
+ * or an `AsyncIterable<SDKUserMessage>`. The streaming variant is for follow-up
+ * user turns within a live session, NOT for replaying prior assistant turns —
+ * there is no `SDKAssistantMessage` input shape. So to preserve multi-turn
+ * memory on the subscription path we serialize the history as a structured
+ * text prefix to the latest user message.
+ *
+ * v0.2 todo: switch to a native multi-turn API if/when the Claude Agent SDK
+ * exposes one (e.g. `query({ messages: [...] })` or session resume).
+ */
+export function renderPromptForClaudeCodeSDK(messages: ChatMessage[]): string {
+  const lastUser = messages[messages.length - 1];
+  if (!lastUser) return '';
+  const prior = messages.slice(0, -1).filter((m) => m.role !== 'system');
+  if (prior.length === 0) return lastUser.content;
+
+  const turns = prior
+    .map((m) => `<turn role="${m.role}">\n${m.content}\n</turn>`)
+    .join('\n');
+  return `<conversation_history>\n${turns}\n</conversation_history>\n\n${lastUser.content}`;
+}
 
 const KNOWN_MODELS: ModelInfo[] = [
   { id: 'claude-opus-4-7', displayName: 'Claude Opus 4.7 (subscription)' },
@@ -9,20 +43,18 @@ const KNOWN_MODELS: ModelInfo[] = [
 ];
 
 export class ClaudeCodeSDKAdapter implements ProviderAdapter {
-  // NOTE: single-turn only. The underlying query() API takes one prompt, so
-  // prior conversation turns in opts.messages are dropped — only the most
-  // recent user message is forwarded.
+  // Multi-turn support: the SDK's query() prompt parameter is single-string or
+  // an AsyncIterable of user-only messages, so prior assistant turns cannot be
+  // replayed natively. We serialize history into the prompt via
+  // renderPromptForClaudeCodeSDK() so follow-ups resolve against earlier turns.
   async *chat(opts: ChatOpts): AsyncIterable<ChatEvent> {
-    const lastUser = [...opts.messages].reverse().find((m) => m.role === 'user');
-    if (!lastUser) {
-      yield { type: 'error', message: 'no user message' };
+    const last = opts.messages[opts.messages.length - 1];
+    if (!last || last.role !== 'user') {
+      yield { type: 'error', message: 'last message must be a user message' };
       return;
     }
-    if (opts.messages.length > 1) {
-      process.stderr.write(
-        'ClaudeCodeSDKAdapter: multi-turn messages dropped; only the last user message is forwarded.\n',
-      );
-    }
+
+    const promptText = renderPromptForClaudeCodeSDK(opts.messages);
 
     const hasTools = !!(opts.tools && opts.tools.length > 0 && opts.toolHandler);
     const mcpServers = hasTools
@@ -32,51 +64,107 @@ export class ClaudeCodeSDKAdapter implements ProviderAdapter {
       ? opts.tools!.map((t) => `mcp__sanji-tools__${t.name}`)
       : undefined;
 
+    // Bridge the caller-supplied AbortSignal into the SDK's AbortController-based
+    // cancellation. SDK 0.1.77's `Options.abortController` is the only way to
+    // make `query()` exit promptly once the client disconnects — without this,
+    // cancelling an ingest leaves the underlying SDK call (and any tool work)
+    // running until natural completion, blocking the sequential ingest queue
+    // and continuing provider work after the user has abandoned the request.
+    const sdkController = new AbortController();
+    const onAbort = () => sdkController.abort();
+    if (opts.signal) {
+      if (opts.signal.aborted) sdkController.abort();
+      else opts.signal.addEventListener('abort', onAbort, { once: true });
+    }
+
     const stream = query({
-      prompt: lastUser.content,
+      prompt: promptText,
       options: {
         model: opts.model,
         systemPrompt: opts.system,
+        abortController: sdkController,
         ...(mcpServers ? { mcpServers } : {}),
         ...(allowedTools ? { allowedTools, permissionMode: 'bypassPermissions' as const } : {}),
       },
     });
 
     let usage: { input: number; output: number } | undefined;
-    for await (const msg of stream as AsyncIterable<any>) {
-      if (msg.type === 'assistant' && Array.isArray(msg.message?.content)) {
-        for (const block of msg.message.content) {
-          if (block.type === 'text') {
-            yield { type: 'text_delta', text: block.text as string };
-          } else if (block.type === 'tool_use') {
-            yield {
-              type: 'tool_use_complete',
-              id: block.id as string,
-              name: block.name as string,
-              input: (block.input ?? {}) as Record<string, unknown>,
-            };
+    try {
+      for await (const msg of stream as AsyncIterable<any>) {
+        if (msg.type === 'assistant' && Array.isArray(msg.message?.content)) {
+          for (const block of msg.message.content) {
+            if (block.type === 'text') {
+              yield { type: 'text_delta', text: block.text as string };
+            } else if (block.type === 'tool_use') {
+              yield {
+                type: 'tool_use_complete',
+                id: block.id as string,
+                name: block.name as string,
+                input: (block.input ?? {}) as Record<string, unknown>,
+              };
+            }
           }
-        }
-      } else if (msg.type === 'user' && Array.isArray(msg.message?.content)) {
-        for (const block of msg.message.content) {
-          if (block.type === 'tool_result') {
-            yield {
-              type: 'tool_result',
-              id: block.tool_use_id as string,
-              content: typeof block.content === 'string' ? block.content : JSON.stringify(block.content),
-              isError: block.is_error === true,
-            };
+        } else if (msg.type === 'user' && Array.isArray(msg.message?.content)) {
+          for (const block of msg.message.content) {
+            if (block.type === 'tool_result') {
+              yield {
+                type: 'tool_result',
+                id: block.tool_use_id as string,
+                content: typeof block.content === 'string' ? block.content : JSON.stringify(block.content),
+                isError: block.is_error === true,
+              };
+            }
           }
+        } else if (msg.type === 'result' && msg.usage) {
+          usage = { input: msg.usage.input_tokens, output: msg.usage.output_tokens };
         }
-      } else if (msg.type === 'result' && msg.usage) {
-        usage = { input: msg.usage.input_tokens, output: msg.usage.output_tokens };
       }
+    } catch (err) {
+      // The SDK throws AbortError once `sdkController.abort()` fires. That
+      // is the expected termination path for caller-driven cancellation;
+      // surface it as a clean stream end rather than an error so the
+      // sequential ingest queue can drain the next job.
+      if (sdkController.signal.aborted) {
+        // fall through to message_stop with whatever usage we collected
+      } else {
+        throw err;
+      }
+    } finally {
+      if (opts.signal) opts.signal.removeEventListener('abort', onAbort);
     }
     yield { type: 'message_stop', usage };
   }
 
   async getAvailableModels(): Promise<ModelInfo[]> {
     return KNOWN_MODELS;
+  }
+
+  /**
+   * NOTE: the Claude Code SDK does not currently expose cache_control on
+   * prompt content blocks; the `cache` flag on segments is ignored on this
+   * path. Anthropic API path keeps caching. The blurb call still works, just
+   * at a higher per-call cost on subscription auth.
+   */
+  async oneShot(opts: OneShotOpts): Promise<string> {
+    const prompt = opts.segments.map((s) => s.text).join('\n\n');
+    const stream = query({
+      prompt,
+      options: {
+        model: opts.model,
+        ...(opts.system ? { systemPrompt: opts.system } : {}),
+      },
+    });
+    let out = '';
+    for await (const msg of stream as AsyncIterable<any>) {
+      if (msg.type === 'assistant' && Array.isArray(msg.message?.content)) {
+        for (const block of msg.message.content) {
+          if (block.type === 'text') out += block.text as string;
+        }
+      } else if (msg.type === 'result') {
+        break;
+      }
+    }
+    return out;
   }
 
   async testCredentials(): Promise<{ ok: boolean; reason?: string }> {
