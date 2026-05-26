@@ -1,4 +1,4 @@
-import { writeFile, mkdir } from 'node:fs/promises';
+import { writeFile, mkdir, unlink } from 'node:fs/promises';
 import { existsSync, statSync } from 'node:fs';
 import { join, basename, extname } from 'node:path';
 import type { ProviderAdapter, IngestEvent, FileFormat, NoteFrontmatter } from '@sanji/shared';
@@ -127,6 +127,21 @@ export class IngestService {
     }
   }
 
+  /**
+   * Best-effort delete of an archived original after a cancel or hard rewrite
+   * failure. We do not surface errors here — the file may not exist (the
+   * paste branch may have skipped the archive, or a previous cleanup ran)
+   * and we never want a cancel path to throw past the caller.
+   */
+  private async rollbackOriginal(rel: string): Promise<void> {
+    if (!rel) return;
+    try {
+      await unlink(join(this.deps.paths.vault, rel));
+    } catch {
+      /* best effort */
+    }
+  }
+
   private async getContext(): Promise<VaultContext> {
     const now = Date.now();
     if (this.contextCache && now - this.contextCache.at < VAULT_CONTEXT_TTL_MS) {
@@ -227,6 +242,18 @@ export class IngestService {
       return;
     }
 
+    // Cancel-during-extract check: rewrite hasn't started yet, but the
+    // original is already archived. Roll it back so a cancelled ingest
+    // leaves no trace in `.sanji/originals/`.
+    if (job.abortController.signal.aborted) {
+      await this.rollbackOriginal(originalForFrontmatter);
+      yield {
+        kind: 'error', fileId: job.fileId, sourceName: name,
+        phase: 'extract', message: 'Cancelled by user.',
+      };
+      return;
+    }
+
     if (text.trim().length === 0) {
       const reason = warnings.find((w) => w.toLowerCase().includes('scanned'))
         ? `${name} appears scanned (no extractable text). OCR support is coming in v0.3.`
@@ -268,12 +295,28 @@ export class IngestService {
             `<<<\n${rawOutput}\n>>>\n`,
         );
       }
+      // Cancel-during-rewrite or hard rewrite failure: in either case the
+      // archived original is for a job that won't commit, so roll it back
+      // before surfacing the terminal event.
+      await this.rollbackOriginal(originalForFrontmatter);
       yield {
         kind: 'error', fileId: job.fileId, sourceName: name,
         phase: 'rewrite',
         message: cancelled
           ? 'Cancelled by user.'
           : `Rewrite failed for ${name}: ${(err as Error).message}.`,
+      };
+      return;
+    }
+
+    // Final pre-commit abort check: rewrite returned successfully but the
+    // user already cancelled. Drop the archived original and bail before
+    // we touch the inbox so cancel really does mean "no vault mutation."
+    if (job.abortController.signal.aborted) {
+      await this.rollbackOriginal(originalForFrontmatter);
+      yield {
+        kind: 'error', fileId: job.fileId, sourceName: name,
+        phase: 'rewrite', message: 'Cancelled by user.',
       };
       return;
     }
@@ -323,6 +366,10 @@ export class IngestService {
       return;
     }
 
+    // Past this point cancel is a no-op: the inbox note is committed on
+    // disk so we let indexing complete to keep the in-memory and on-disk
+    // states consistent. A late cancel still flips the row's client-side
+    // status (164aa93) but does not roll back the write.
     // When an indexer is wired in, prefer the full path: indexer.indexFile
     // upserts the notes row AND chunks + embeddings, so semantic_search and
     // hybrid_search see the new content immediately. When the indexer is

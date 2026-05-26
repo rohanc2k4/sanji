@@ -22,4 +22,5 @@ export type ServerDeps =
       skills: readonly Skill[];
       ingestService: IngestService;
       indexer: Indexer;
+      maxUploadBytes: number;
     };

@@ -68,6 +68,15 @@ export class IndexRepo {
   }
 
   deleteNote(path: string): void {
+    // chunks_vec is a vec0 virtual table; SQLite's FK ON DELETE CASCADE does
+    // not reach virtual tables, so purge its rows explicitly before the
+    // notes delete cascades chunks. Otherwise the vector rows orphan: KNN
+    // returns them in top-k, the join against chunks drops them, and
+    // semantic_search / hybrid_search return fewer results than expected
+    // (or miss a renamed note entirely).
+    this.db
+      .prepare('DELETE FROM chunks_vec WHERE rowid IN (SELECT id FROM chunks WHERE note_path = ?)')
+      .run(path);
     this.db.prepare('DELETE FROM notes WHERE path = ?').run(path);
   }
 

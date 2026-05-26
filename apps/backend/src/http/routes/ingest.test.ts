@@ -17,7 +17,7 @@ describe('ingest route', () => {
   it('POST /api/ingest/text streams ingest events as SSE', async () => {
     const stub = new StubService();
     const app = new Hono();
-    app.route('/', ingestRoute({ service: stub as any }));
+    app.route('/', ingestRoute({ service: stub as any, maxUploadBytes: 1024 * 1024 }));
     const res = await app.request('/api/ingest/text', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -35,12 +35,41 @@ describe('ingest route', () => {
   it('POST /api/ingest/text rejects empty title', async () => {
     const stub = new StubService();
     const app = new Hono();
-    app.route('/', ingestRoute({ service: stub as any }));
+    app.route('/', ingestRoute({ service: stub as any, maxUploadBytes: 1024 * 1024 }));
     const res = await app.request('/api/ingest/text', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ title: '', content: 'hello' }),
     });
     expect(res.status).toBe(400);
+  });
+
+  it('POST /api/ingest/text rejects bodies over maxUploadBytes with 413', async () => {
+    const stub = new StubService();
+    const app = new Hono();
+    // Tight cap so we can produce an oversize body cheaply.
+    app.route('/', ingestRoute({ service: stub as any, maxUploadBytes: 1024 }));
+    const oversize = JSON.stringify({ title: 'demo', content: 'x'.repeat(2048) });
+    const res = await app.request('/api/ingest/text', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'content-length': String(oversize.length) },
+      body: oversize,
+    });
+    expect(res.status).toBe(413);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('PAYLOAD_TOO_LARGE');
+  });
+
+  it('POST /api/ingest/file rejects multipart bodies over maxUploadBytes with 413', async () => {
+    const stub = new StubService();
+    const app = new Hono();
+    app.route('/', ingestRoute({ service: stub as any, maxUploadBytes: 1024 }));
+    const form = new FormData();
+    form.append('file', new Blob(['x'.repeat(4096)], { type: 'text/plain' }), 'big.txt');
+    const res = await app.request('/api/ingest/file', {
+      method: 'POST',
+      body: form,
+    });
+    expect(res.status).toBe(413);
   });
 });

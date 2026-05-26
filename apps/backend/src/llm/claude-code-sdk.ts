@@ -64,45 +64,73 @@ export class ClaudeCodeSDKAdapter implements ProviderAdapter {
       ? opts.tools!.map((t) => `mcp__sanji-tools__${t.name}`)
       : undefined;
 
+    // Bridge the caller-supplied AbortSignal into the SDK's AbortController-based
+    // cancellation. SDK 0.1.77's `Options.abortController` is the only way to
+    // make `query()` exit promptly once the client disconnects — without this,
+    // cancelling an ingest leaves the underlying SDK call (and any tool work)
+    // running until natural completion, blocking the sequential ingest queue
+    // and continuing provider work after the user has abandoned the request.
+    const sdkController = new AbortController();
+    const onAbort = () => sdkController.abort();
+    if (opts.signal) {
+      if (opts.signal.aborted) sdkController.abort();
+      else opts.signal.addEventListener('abort', onAbort, { once: true });
+    }
+
     const stream = query({
       prompt: promptText,
       options: {
         model: opts.model,
         systemPrompt: opts.system,
+        abortController: sdkController,
         ...(mcpServers ? { mcpServers } : {}),
         ...(allowedTools ? { allowedTools, permissionMode: 'bypassPermissions' as const } : {}),
       },
     });
 
     let usage: { input: number; output: number } | undefined;
-    for await (const msg of stream as AsyncIterable<any>) {
-      if (msg.type === 'assistant' && Array.isArray(msg.message?.content)) {
-        for (const block of msg.message.content) {
-          if (block.type === 'text') {
-            yield { type: 'text_delta', text: block.text as string };
-          } else if (block.type === 'tool_use') {
-            yield {
-              type: 'tool_use_complete',
-              id: block.id as string,
-              name: block.name as string,
-              input: (block.input ?? {}) as Record<string, unknown>,
-            };
+    try {
+      for await (const msg of stream as AsyncIterable<any>) {
+        if (msg.type === 'assistant' && Array.isArray(msg.message?.content)) {
+          for (const block of msg.message.content) {
+            if (block.type === 'text') {
+              yield { type: 'text_delta', text: block.text as string };
+            } else if (block.type === 'tool_use') {
+              yield {
+                type: 'tool_use_complete',
+                id: block.id as string,
+                name: block.name as string,
+                input: (block.input ?? {}) as Record<string, unknown>,
+              };
+            }
           }
-        }
-      } else if (msg.type === 'user' && Array.isArray(msg.message?.content)) {
-        for (const block of msg.message.content) {
-          if (block.type === 'tool_result') {
-            yield {
-              type: 'tool_result',
-              id: block.tool_use_id as string,
-              content: typeof block.content === 'string' ? block.content : JSON.stringify(block.content),
-              isError: block.is_error === true,
-            };
+        } else if (msg.type === 'user' && Array.isArray(msg.message?.content)) {
+          for (const block of msg.message.content) {
+            if (block.type === 'tool_result') {
+              yield {
+                type: 'tool_result',
+                id: block.tool_use_id as string,
+                content: typeof block.content === 'string' ? block.content : JSON.stringify(block.content),
+                isError: block.is_error === true,
+              };
+            }
           }
+        } else if (msg.type === 'result' && msg.usage) {
+          usage = { input: msg.usage.input_tokens, output: msg.usage.output_tokens };
         }
-      } else if (msg.type === 'result' && msg.usage) {
-        usage = { input: msg.usage.input_tokens, output: msg.usage.output_tokens };
       }
+    } catch (err) {
+      // The SDK throws AbortError once `sdkController.abort()` fires. That
+      // is the expected termination path for caller-driven cancellation;
+      // surface it as a clean stream end rather than an error so the
+      // sequential ingest queue can drain the next job.
+      if (sdkController.signal.aborted) {
+        // fall through to message_stop with whatever usage we collected
+      } else {
+        throw err;
+      }
+    } finally {
+      if (opts.signal) opts.signal.removeEventListener('abort', onAbort);
     }
     yield { type: 'message_stop', usage };
   }

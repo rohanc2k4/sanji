@@ -22,6 +22,13 @@ import type { IndexRepo } from '../../index/repo.js';
  */
 export function syncTitleToFilename(source: string, newTitle: string): string {
   let out = source;
+  // Track the rebuilt frontmatter length separately. When the new title is
+  // shorter than the old one, `out` shrinks by exactly that delta and the
+  // original fmMatch[0].length over-shoots into the body — slicing `rest`
+  // from that stale offset can cut past the first H1, so the H1 regex
+  // never matches and the rename leaves a stale heading despite a
+  // successful frontmatter sync.
+  let newFmLength = 0;
 
   const fmMatch = out.match(/^(---\s*\n)([\s\S]*?)(\n---\s*\n?)/);
   if (fmMatch) {
@@ -35,12 +42,12 @@ export function syncTitleToFilename(source: string, newTitle: string): string {
       newBlock = block.replace(titleLineRe, `title: ${safe}`);
     }
     out = head + newBlock + tail + out.slice(fmMatch[0].length);
+    newFmLength = head.length + newBlock.length + tail.length;
   }
 
-  // Replace the first H1 in the body (after frontmatter).
-  const fmEnd = fmMatch ? fmMatch[0].length : 0;
-  const head = out.slice(0, fmEnd);
-  const rest = out.slice(fmEnd);
+  // Replace the first H1 in the body (after the REBUILT frontmatter).
+  const head = out.slice(0, newFmLength);
+  const rest = out.slice(newFmLength);
   const h1Re = /^#\s+.+$/m;
   const h1Match = rest.match(h1Re);
   if (h1Match) {
@@ -91,11 +98,25 @@ export function notesRoute(deps: { paths: VaultPaths; repo?: IndexRepo; indexer?
     const ctx = { paths: deps.paths } as unknown as ToolContext;
     try {
       const result = await writeNoteTool.run({ path: validated, content: body.content }, ctx);
-      // Upsert into the notes index so the saved file appears in the
-      // SourcesSidebar listing immediately. The chokidar watcher and
-      // chunk/embedding pipeline catch up async; for sidebar visibility,
-      // having the notes row is enough.
-      if (deps.repo) {
+      // Re-index the saved note so chunks + embeddings reflect the new
+      // body. A bare upsertNote() would only stamp the new mtime onto the
+      // notes row; Indexer.indexFile() skips on mtime + schema_version
+      // match, so the next full pass would treat the changed file as
+      // already-current and leave semantic/hybrid search on stale chunks
+      // indefinitely. When an indexer is wired, prefer indexFile(); when
+      // it isn't (degraded tests), fall back to upsertNote so at least
+      // the SourcesSidebar listing stays in sync.
+      if (deps.indexer) {
+        try {
+          await deps.indexer.indexFile(deps.paths.vault, validated);
+        } catch (err) {
+          process.stderr.write(
+            `post-save indexFile failed for ${validated}: ${
+              err instanceof Error ? err.message : String(err)
+            }\n`,
+          );
+        }
+      } else if (deps.repo) {
         const abs = join(deps.paths.vault, validated);
         const mtimeMs = statSync(abs).mtimeMs;
         // Re-read from disk: write-note may have re-prepended preserved

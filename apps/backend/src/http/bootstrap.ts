@@ -139,6 +139,7 @@ export async function bootstrapReadyDeps(vault: string): Promise<ReadyDeps> {
     skills,
     ingestService,
     indexer,
+    maxUploadBytes: cfg.ingestion.max_upload_bytes,
   };
 }
 

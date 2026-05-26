@@ -241,6 +241,58 @@ describe('IngestService', () => {
     expect(last.message).toMatch(/[Cc]ancelled/);
     // No inbox file should have landed on disk.
     expect(existsSync(join(paths.vault, 'inbox/demo.md'))).toBe(false);
+    // And the archived original must be rolled back — a cancelled ingest
+    // should leave no trace in .sanji/originals/.
+    const originalsDir = join(paths.vault, '.sanji/originals');
+    if (existsSync(originalsDir)) {
+      expect(readdirSync(originalsDir)).toHaveLength(0);
+    }
+    db.close();
+  });
+
+  it('rolls back the archived original when cancel fires between extract and rewrite', async () => {
+    // Tight cancel window: the SlowAdapter waits 500ms on chat(), so cancel()
+    // landing mid-rewrite goes through the rewrite catch path. We separately
+    // cover the "cancel right at the top of rewriting" boundary by aborting
+    // pre-emptively. Either way, originals/ must be empty.
+    class SlowAdapter implements ProviderAdapter {
+      async *chat(opts: ChatOpts): AsyncIterable<ChatEvent> {
+        await new Promise<void>((resolve, reject) => {
+          const t = setTimeout(resolve, 500);
+          opts.signal?.addEventListener('abort', () => {
+            clearTimeout(t);
+            reject(new Error('aborted'));
+          }, { once: true });
+        });
+        yield { type: 'text_delta', text: VALID_OUTPUT };
+        yield { type: 'message_stop', usage: { input: 1, output: 1 } };
+      }
+      async getAvailableModels() { return []; }
+      async testCredentials() { return { ok: true as const }; }
+    }
+    const paths = resolveVaultPaths(dir);
+    mkdirSync(paths.sanjiDir, { recursive: true });
+    const db = openDb(paths.indexDb);
+    runMigrations(db);
+    const repo = new IndexRepo(db);
+    const service = new IngestService({
+      paths, repo, adapter: new SlowAdapter(),
+      model: 'sonnet', ingestSkill,
+    });
+    const consume = (async () => {
+      for await (const _ of service.enqueue({
+        fileId: 'cancel-pre',
+        source: { kind: 'file', data: Buffer.from('hello'), filename: 'pre.txt' },
+        abortController: new AbortController(),
+      })) { /* drain */ }
+    })();
+    await new Promise((r) => setTimeout(r, 50));
+    service.cancel('cancel-pre');
+    await consume;
+    const originalsDir = join(paths.vault, '.sanji/originals');
+    if (existsSync(originalsDir)) {
+      expect(readdirSync(originalsDir)).toHaveLength(0);
+    }
     db.close();
   });
 

@@ -112,6 +112,56 @@ describe('ClaudeCodeSDKAdapter', () => {
     }
     expect(queryCalls[0]!.prompt).toBe('solo-question');
   });
+
+  it('threads an AbortController into query() options for caller cancellation', async () => {
+    queryCalls.length = 0;
+    const a = new ClaudeCodeSDKAdapter();
+    const ctrl = new AbortController();
+    for await (const _ of a.chat({
+      model: 'claude-sonnet-4-6',
+      messages: [{ role: 'user', content: 'hi' }],
+      signal: ctrl.signal,
+    })) {
+      // drain
+    }
+    const opts = queryCalls[0]!.options as { abortController?: AbortController };
+    expect(opts.abortController).toBeInstanceOf(AbortController);
+  });
+
+  it('propagates opts.signal abort into the SDK controller', async () => {
+    queryCalls.length = 0;
+    const a = new ClaudeCodeSDKAdapter();
+    const ctrl = new AbortController();
+    // Drain the current mock first (it completes synchronously).
+    for await (const _ of a.chat({
+      model: 'claude-sonnet-4-6',
+      messages: [{ role: 'user', content: 'hi' }],
+      signal: ctrl.signal,
+    })) {
+      // drain
+    }
+    const sdkCtrl = (queryCalls[0]!.options as { abortController: AbortController })
+      .abortController;
+    expect(sdkCtrl.signal.aborted).toBe(false);
+    ctrl.abort();
+    // We can no longer assert propagation after the chat() loop exits because
+    // the cleanup `finally` removes the bridge listener — what matters at
+    // runtime is that abort propagates DURING the loop, not after. Verify
+    // that with a fresh case where abort fires pre-iteration.
+    const ctrl2 = new AbortController();
+    ctrl2.abort();
+    queryCalls.length = 0;
+    for await (const _ of a.chat({
+      model: 'claude-sonnet-4-6',
+      messages: [{ role: 'user', content: 'hi' }],
+      signal: ctrl2.signal,
+    })) {
+      // drain
+    }
+    const sdkCtrl2 = (queryCalls[0]!.options as { abortController: AbortController })
+      .abortController;
+    expect(sdkCtrl2.signal.aborted).toBe(true);
+  });
 });
 
 describe('renderPromptForClaudeCodeSDK', () => {

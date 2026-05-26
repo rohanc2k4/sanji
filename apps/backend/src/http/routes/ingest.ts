@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import { streamSSE } from 'hono/streaming';
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
@@ -12,12 +13,30 @@ const TextBody = z.object({
 
 export interface IngestRouteDeps {
   service: IngestService;
+  /**
+   * Hard cap on multipart and JSON ingest bodies in bytes. Defends against
+   * one large/malicious upload OOM-ing the backend by buffering the body
+   * into memory before extraction even starts. Caller wires this from
+   * `cfg.ingestion.max_upload_bytes`.
+   */
+  maxUploadBytes: number;
 }
+
+const tooLarge = (c: import('hono').Context) =>
+  c.json(
+    {
+      kind: 'api-error',
+      code: 'PAYLOAD_TOO_LARGE',
+      message: 'Upload exceeds the ingestion size limit.',
+    },
+    413,
+  );
 
 export function ingestRoute(deps: IngestRouteDeps) {
   const r = new Hono();
+  const limit = bodyLimit({ maxSize: deps.maxUploadBytes, onError: tooLarge });
 
-  r.post('/api/ingest/text', async (c) => {
+  r.post('/api/ingest/text', limit, async (c) => {
     const parsed = TextBody.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
       return c.json(
@@ -61,7 +80,7 @@ export function ingestRoute(deps: IngestRouteDeps) {
     });
   });
 
-  r.post('/api/ingest/file', async (c) => {
+  r.post('/api/ingest/file', limit, async (c) => {
     const form = await c.req.formData();
     const file = form.get('file');
     if (!(file instanceof File)) {

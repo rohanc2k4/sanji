@@ -44,8 +44,17 @@ export const ConfigSchema = z
         // sending note bodies to the provider. Default off in v0.1; flip via
         // .sanji/config.toml. No UI surface for it in v0.1 (file-only).
         contextual_retrieval: z.boolean().default(false),
+        // Hard cap on the multipart / text body the ingest routes will accept.
+        // Defends against backend OOM from one upload buffering the full body
+        // in memory before extraction. Default 25 MiB — comfortably covers a
+        // 200-page PDF lecture deck but rejects pathological uploads.
+        max_upload_bytes: z
+          .number()
+          .int()
+          .positive()
+          .default(25 * 1024 * 1024),
       })
-      .default({ contextual_retrieval: false }),
+      .default({ contextual_retrieval: false, max_upload_bytes: 25 * 1024 * 1024 }),
     ui: z
       .object({
         theme: z.enum(['auto', 'light', 'dark']).default('auto'),
