@@ -3,6 +3,7 @@ import type {
   ProviderTestResult,
   VaultValidateResult,
   OnboardingInitRequest,
+  ClaudeCliCheckResult,
 } from '@sanji/shared';
 import { apiFetch } from './client.js';
 
@@ -22,4 +23,10 @@ export const initOnboarding = (req: OnboardingInitRequest) =>
   apiFetch<ConfigDto>('/api/onboarding/init', {
     method: 'POST',
     body: JSON.stringify(req),
+  });
+
+export const checkClaudeCli = () =>
+  apiFetch<ClaudeCliCheckResult>('/api/onboarding/check-claude-cli', {
+    method: 'POST',
+    body: '{}',
   });
