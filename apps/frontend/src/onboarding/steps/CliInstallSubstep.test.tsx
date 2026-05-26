@@ -15,7 +15,6 @@ describe('CliInstallSubstep', () => {
   const baseProps = {
     os: 'darwin' as const,
     onRecheck: vi.fn(),
-    onSwitchToApiKey: vi.fn(),
     onBack: vi.fn(),
     rechecking: false,
     lastRecheckFailed: false,

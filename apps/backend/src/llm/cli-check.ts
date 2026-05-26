@@ -32,7 +32,7 @@ export async function checkClaudeCli(): Promise<ClaudeCliCheckResult> {
   try {
     return await new Promise<ClaudeCliCheckResult>((resolve) => {
       // Windows: shell:true so .cmd shims (npm-installed CLIs) resolve.
-      // macOS/Linux: bare spawn — shell:true would invoke /bin/sh and
+      // macOS/Linux: bare spawn. shell:true would invoke /bin/sh and
       // change quoting semantics for no benefit.
       const useShell = os === 'win32';
       const child = spawn('claude', ['--version'], { shell: useShell });

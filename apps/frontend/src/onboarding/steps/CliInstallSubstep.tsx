@@ -13,7 +13,6 @@ export interface CliInstallSubstepProps {
   rechecking: boolean;
   lastRecheckFailed: boolean;
   onRecheck: () => void;
-  onSwitchToApiKey?: () => void; // reserved for a later phase; not surfaced in v0.1 UI
   onBack: () => void;
 }
 
