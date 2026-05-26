@@ -31,6 +31,16 @@ export interface ProviderTestResult {
   reason?: string;
 }
 
+export type ClaudeCliOs = 'darwin' | 'linux' | 'win32';
+
+export interface ClaudeCliCheckResult {
+  installed: boolean;
+  os: ClaudeCliOs;
+  version?: string;
+  path?: string;
+  reason?: string;
+}
+
 export interface VaultValidateResult {
   ok: boolean;
   noteCount: number;
