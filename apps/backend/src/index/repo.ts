@@ -101,6 +101,19 @@ export class IndexRepo {
       .run(version, path);
   }
 
+  /**
+   * Clear `index_schema_version` for a note so the next full index pass
+   * treats it as needing re-chunking. Used by the save handler when an
+   * online indexFile() throws — without this, the notes row still holds
+   * the new mtime and the next pass would skip it on (mtime, version)
+   * match, leaving stale chunks forever.
+   */
+  invalidateNoteIndexVersion(path: string): void {
+    this.db
+      .prepare('UPDATE notes SET index_schema_version = NULL WHERE path = ?')
+      .run(path);
+  }
+
   allNotePaths(): string[] {
     return (this.db.prepare('SELECT path FROM notes').all() as Array<{ path: string }>).map(
       (r) => r.path,

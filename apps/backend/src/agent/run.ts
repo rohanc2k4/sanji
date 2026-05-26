@@ -33,6 +33,14 @@ export async function* runAgent(
    * user turn (used by the CLI which is single-shot today).
    */
   input: string | ChatMessage[],
+  /**
+   * Optional AbortSignal forwarded into `adapter.chat({signal})`. When
+   * the HTTP route observes a client disconnect (cancel button, browser
+   * navigate), it passes `c.req.raw.signal` here so the underlying SDK
+   * call aborts promptly instead of completing server-side and burning
+   * provider tokens on a request the user already abandoned.
+   */
+  signal?: AbortSignal,
 ): AsyncGenerator<ChatEvent, AgentStats, void> {
   const history: ChatMessage[] = typeof input === 'string'
     ? [{ role: 'user', content: input }]
@@ -74,6 +82,7 @@ export async function* runAgent(
     toolHandler: skillTools.length > 0
       ? async (name, input) => deps.registry.run(name, input, deps.ctx)
       : undefined,
+    ...(signal ? { signal } : {}),
   });
 
   // Track tool name by id so tool_call_end can include the tool label

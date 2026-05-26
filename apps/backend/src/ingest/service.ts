@@ -258,6 +258,10 @@ export class IngestService {
       const reason = warnings.find((w) => w.toLowerCase().includes('scanned'))
         ? `${name} appears scanned (no extractable text). OCR support is coming in v0.3.`
         : `${name} produced no extractable text.`;
+      // We archived the original right after extract. Roll it back so
+      // repeated scanned/whitespace uploads don't fill .sanji/originals
+      // with files that no note references (disk pressure + privacy).
+      await this.rollbackOriginal(originalForFrontmatter);
       yield {
         kind: 'error', fileId: job.fileId, sourceName: name,
         phase: 'extract', message: reason,
@@ -352,6 +356,10 @@ export class IngestService {
     } catch (err) {
       const code = (err as NodeJS.ErrnoException).code;
       if (code === 'EEXIST') {
+        // Race-loss path: leave the original archived so the user can
+        // retry with a different target name. This is the one terminal
+        // path that intentionally keeps the original around because the
+        // user can recover by renaming.
         yield {
           kind: 'error', fileId: job.fileId, sourceName: name,
           phase: 'write',
@@ -359,6 +367,10 @@ export class IngestService {
         };
         return;
       }
+      // Non-EEXIST write failures (disk full, EACCES, etc.) are terminal
+      // with no committed note. Roll back the archived original so we
+      // don't accumulate orphans across repeated failures.
+      await this.rollbackOriginal(originalForFrontmatter);
       yield {
         kind: 'error', fileId: job.fileId, sourceName: name,
         phase: 'write', message: `Could not write inbox/${target}: ${(err as Error).message}.`,

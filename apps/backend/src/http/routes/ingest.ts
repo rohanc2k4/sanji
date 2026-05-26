@@ -20,7 +20,21 @@ export interface IngestRouteDeps {
    * `cfg.ingestion.max_upload_bytes`.
    */
   maxUploadBytes: number;
+  /**
+   * Hard cap on the SUM of in-flight upload bytes across concurrent
+   * requests. Per-request bodyLimit alone is not enough: N concurrent
+   * clients can each buffer up to `maxUploadBytes` while only one job
+   * runs in the service queue. We reject (503) the (N+1)th request
+   * whose Content-Length would push us over this cap. Defaults to
+   * 2 × maxUploadBytes (~50 MiB at the default).
+   */
+  maxConcurrentUploadBytes?: number;
 }
+
+// Module-scoped so a process-wide cap holds across all ingestRoute
+// invocations. v0.1 only ever creates one instance per ready generation,
+// but this is cheap insurance and makes the limit observable in tests.
+let globalInflightUploadBytes = 0;
 
 const tooLarge = (c: import('hono').Context) =>
   c.json(
@@ -35,10 +49,50 @@ const tooLarge = (c: import('hono').Context) =>
 export function ingestRoute(deps: IngestRouteDeps) {
   const r = new Hono();
   const limit = bodyLimit({ maxSize: deps.maxUploadBytes, onError: tooLarge });
+  const concurrentCap = deps.maxConcurrentUploadBytes ?? deps.maxUploadBytes * 2;
+
+  /**
+   * Pre-buffer admission control. Read Content-Length (if present) and
+   * reject early when the in-flight total would exceed `concurrentCap`.
+   * Returns the estimated size we reserved, plus a release() that the
+   * handler MUST call after the body has been consumed AND the stream
+   * has fully drained — otherwise the counter leaks. When Content-Length
+   * is missing we conservatively reserve `maxUploadBytes` as the worst
+   * case so an unknown-size request can't sneak past the gate.
+   */
+  function admit(c: import('hono').Context): { release: () => void } | Response {
+    const lenHeader = c.req.raw.headers.get('content-length');
+    const estimate = lenHeader != null
+      ? Math.min(Number(lenHeader) || 0, deps.maxUploadBytes)
+      : deps.maxUploadBytes;
+    if (globalInflightUploadBytes + estimate > concurrentCap) {
+      return c.json(
+        {
+          kind: 'api-error',
+          code: 'CONCURRENT_UPLOAD_LIMIT',
+          message:
+            'Too many uploads in flight. Wait for the current ingestions to finish, then retry.',
+        },
+        503,
+      );
+    }
+    globalInflightUploadBytes += estimate;
+    let released = false;
+    return {
+      release: () => {
+        if (released) return;
+        released = true;
+        globalInflightUploadBytes -= estimate;
+      },
+    };
+  }
 
   r.post('/api/ingest/text', limit, async (c) => {
+    const reservation = admit(c);
+    if (reservation instanceof Response) return reservation;
     const parsed = TextBody.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
+      reservation.release();
       return c.json(
         { kind: 'api-error', code: 'BAD_BODY', message: parsed.error.message },
         400,
@@ -76,14 +130,19 @@ export function ingestRoute(deps: IngestRouteDeps) {
             phase: 'rewrite', message: `Unexpected error: ${msg}`,
           }),
         });
+      } finally {
+        reservation.release();
       }
     });
   });
 
   r.post('/api/ingest/file', limit, async (c) => {
+    const reservation = admit(c);
+    if (reservation instanceof Response) return reservation;
     const form = await c.req.formData();
     const file = form.get('file');
     if (!(file instanceof File)) {
+      reservation.release();
       return c.json(
         { kind: 'api-error', code: 'BAD_BODY', message: 'file field required' },
         400,
@@ -117,9 +176,21 @@ export function ingestRoute(deps: IngestRouteDeps) {
             phase: 'rewrite', message: `Unexpected error: ${msg}`,
           }),
         });
+      } finally {
+        reservation.release();
       }
     });
   });
 
   return r;
+}
+
+/** Test-only: read the current global upload counter. */
+export function __inflightUploadBytesForTest(): number {
+  return globalInflightUploadBytes;
+}
+
+/** Test-only: reset the global counter between cases. */
+export function __resetInflightUploadBytesForTest(): void {
+  globalInflightUploadBytes = 0;
 }

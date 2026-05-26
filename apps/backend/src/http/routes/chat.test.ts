@@ -111,4 +111,46 @@ describe('chat route', () => {
     await res.text();
     expect(captured.input).toEqual(messages);
   });
+
+  it('forwards c.req.raw.signal into runAgent so client-aborts reach the SDK', async () => {
+    // Capture the signal the route hands to runAgent. The fake agent
+    // immediately echoes whether the signal is already aborted, so we
+    // can drive a pre-aborted request and assert propagation without
+    // needing to race a real-time abort against the SSE stream.
+    let receivedSignal: AbortSignal | undefined;
+    const recordSignalAgent = async function* (
+      _deps: AgentDependencies,
+      _input: string | ChatMessage[],
+      signal?: AbortSignal,
+    ): AsyncGenerator<ChatEvent, AgentStats, void> {
+      receivedSignal = signal;
+      yield { type: 'message_stop', usage: { input: 0, output: 0 } };
+      return { skill: 'fake', toolCalls: 0 };
+    };
+    const app = new Hono();
+    app.route(
+      '/',
+      chatRoute({
+        deps: {} as AgentDependencies,
+        runAgent: recordSignalAgent,
+      }),
+    );
+    const ctrl = new AbortController();
+    ctrl.abort();
+    // The route reads c.req.raw.signal — Hono surfaces fetch's signal
+    // there. app.request accepts a RequestInit, including signal.
+    const res = await app.request(
+      '/api/chat',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ messages: [{ role: 'user', content: 'hi' }] }),
+        signal: ctrl.signal,
+      },
+    );
+    expect(res.status).toBe(200);
+    await res.text();
+    expect(receivedSignal).toBeDefined();
+    expect(receivedSignal!.aborted).toBe(true);
+  });
 });

@@ -110,6 +110,12 @@ export function notesRoute(deps: { paths: VaultPaths; repo?: IndexRepo; indexer?
         try {
           await deps.indexer.indexFile(deps.paths.vault, validated);
         } catch (err) {
+          // Index failure here would otherwise be silent: the file IS on
+          // disk with a new mtime, so a bare upsertNote (or even no-op)
+          // leaves Indexer.indexFile()'s skip-on-match check happy and
+          // chunks stay stale forever. Clear index_schema_version so the
+          // next full pass picks it up unconditionally.
+          if (deps.repo) deps.repo.invalidateNoteIndexVersion(validated);
           process.stderr.write(
             `post-save indexFile failed for ${validated}: ${
               err instanceof Error ? err.message : String(err)
@@ -210,6 +216,17 @@ export function notesRoute(deps: { paths: VaultPaths; repo?: IndexRepo; indexer?
         // we just may have truncated it.
         if (snapshotPath) {
           try { await copyFile(snapshotPath, toAbs); } catch { /* drop */ }
+        }
+        // The fsRename above already moved bytes from `from` to `to`. If
+        // we leave them there and return 500, the UI / index still
+        // believe the rename failed and will 404 on the original path.
+        // Move the file back so the user-visible state matches the API
+        // verdict; best-effort because if this also fails we'd rather
+        // surface the original error than nest a recovery throw.
+        try {
+          await fsRename(toAbs, fromAbs);
+        } catch {
+          /* drop — surfaces in the 500 below */
         }
         return c.json({
           kind: 'api-error',

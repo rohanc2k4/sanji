@@ -21,6 +21,7 @@ const Body = z.object({
 type RunAgentFn = (
   deps: AgentDependencies,
   input: string | ChatMessage[],
+  signal?: AbortSignal,
 ) => AsyncGenerator<ChatEvent, AgentStats, void>;
 
 export function chatRoute(opts: { deps: AgentDependencies; runAgent?: RunAgentFn }) {
@@ -48,9 +49,14 @@ export function chatRoute(opts: { deps: AgentDependencies; runAgent?: RunAgentFn
         parsed.data.messages.map((m) => m.role).join(',') + '\n',
     );
 
+    // Forward the client-disconnect signal into runAgent → adapter.chat so
+    // a cancel/resend actually stops the underlying SDK call instead of
+    // letting it complete server-side and burn provider cost on a
+    // request the user already abandoned.
+    const clientSignal = c.req.raw.signal;
     return streamSSE(c, async (stream) => {
       try {
-        for await (const ev of runAgent(deps, parsed.data.messages)) {
+        for await (const ev of runAgent(deps, parsed.data.messages, clientSignal)) {
           await stream.writeSSE({ event: ev.type, data: JSON.stringify(ev) });
         }
       } catch (err) {

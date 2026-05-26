@@ -36,9 +36,14 @@ export function ChatShell({
   const editorOpen = editorPath !== null;
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   // Sticky per chat-shell-instance. If a future "new conversation" reset
-  // tears down ChatShell, the picker resets with it. Default matches the
-  // hard-coded modelDefault from initialOnboardingState.
-  const [selectedModel, setSelectedModel] = useState('claude-sonnet-4-6');
+  // tears down ChatShell, the picker resets with it. Initial value reads
+  // from the saved config so a user who set models.default = opus / haiku
+  // in .sanji/config.toml sees their preference reflected in the picker
+  // (and stops sending an unwanted per-request `model` override on every
+  // chat). Falls back to Sonnet when config hasn't loaded yet.
+  const [selectedModel, setSelectedModel] = useState(
+    () => config?.models?.default ?? 'claude-sonnet-4-6',
+  );
   const chat = useChat({
     idleMinutes: config?.chat?.autoClearIdleMinutes,
     threshold: config?.chat?.autoClearThreshold,

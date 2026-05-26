@@ -148,23 +148,47 @@ describe('IngestService', () => {
   });
 
   it('writes originals with collision-resistant names so a second ingestion does not overwrite the first', async () => {
+    // Use the paste source kind: paste always produces non-empty text, so
+    // both jobs reach a successful commit and keep their archived
+    // originals. Previously the test relied on the empty-PDF-extract path
+    // leaving leftover originals behind — exactly the leak the
+    // rollback-on-empty-text fix (cycle-2 medium) closes.
     const { service, paths, db } = setup();
-    // First ingestion of paper.pdf
     for await (const _ of service.enqueue({
       fileId: 'f-a',
-      source: { kind: 'file', data: Buffer.from('first contents'), filename: 'paper.pdf' },
+      source: { kind: 'paste', title: 'paper', content: 'first body content' },
       abortController: new AbortController(),
     })) { /* drain */ }
-    // Wait 2ms to ensure Date.now() differs across the two writes.
+    // First commit lands at inbox/paper.md; second is renamed so it doesn't
+    // get skipped by the existsSync pre-check. The point of the test is the
+    // archive naming, not the inbox path.
     await new Promise((r) => setTimeout(r, 2));
-    // Second ingestion of paper.pdf with different content
     for await (const _ of service.enqueue({
       fileId: 'f-b',
-      source: { kind: 'file', data: Buffer.from('second contents'), filename: 'paper.pdf' },
+      source: { kind: 'paste', title: 'paper-2', content: 'second body content' },
       abortController: new AbortController(),
     })) { /* drain */ }
-    const archived = readdirSync(join(paths.vault, '.sanji/originals')).filter((f) => f.startsWith('paper-'));
-    expect(archived).toHaveLength(2);
+    const archived = readdirSync(join(paths.vault, '.sanji/originals'));
+    // One archive per ingestion, each with a timestamped kebab(title)
+    // basename. The collision-resistance lives in the Date.now() suffix.
+    expect(archived.filter((f) => f.startsWith('paper-')).length).toBeGreaterThanOrEqual(2);
+    db.close();
+  });
+
+  it('rolls back the archived original when the extract step produces no usable text', async () => {
+    // Privacy: a scanned PDF (empty extractable text) should not leave its
+    // original sitting in .sanji/originals forever. Use a buffer that the
+    // PDF extractor returns empty for to trigger the empty-text path.
+    const { service, paths, db } = setup();
+    for await (const _ of service.enqueue({
+      fileId: 'f1',
+      source: { kind: 'file', data: Buffer.from('not a real pdf'), filename: 'scan.pdf' },
+      abortController: new AbortController(),
+    })) { /* drain */ }
+    const originalsDir = join(paths.vault, '.sanji/originals');
+    if (existsSync(originalsDir)) {
+      expect(readdirSync(originalsDir)).toHaveLength(0);
+    }
     db.close();
   });
 

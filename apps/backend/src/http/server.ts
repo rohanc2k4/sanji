@@ -15,15 +15,24 @@ import { teardownReadyDeps, type ReadyDeps } from './bootstrap.js';
 export interface ServerHandle {
   app: Hono;
   /**
-   * Swap the live route table to a new dependency tree. Returns a promise
-   * that resolves once the previous generation's in-flight requests have
-   * drained and its ready-deps (db, embedder) have been torn down. For a
-   * no-vault → ready transition the promise resolves immediately because
-   * there are no retired ready deps. Onboarding init awaits this so the
-   * 200 response only goes out after a clean teardown.
+   * Swap the live route table to a new dependency tree. Resolves once the
+   * NEW generation is wired up and serving — teardown of the previous
+   * generation's ready-deps runs in the background and is NOT awaited
+   * here, so the request that triggered the swap (which is itself counted
+   * in the previous generation's inflight counter via the proxy) does
+   * not deadlock against its own drain. Use `awaitLastTeardown()` in
+   * tests if you need to observe the teardown completing.
    */
   swap: (next: ServerDeps) => Promise<void>;
   current: () => ServerDeps;
+  /**
+   * Test seam: resolves when the most recently retired generation has
+   * finished tearing down (or null when nothing has been retired yet).
+   * Production code shouldn't need this — onboarding init returns 200 as
+   * soon as the new routes are live; teardown of the old deps continues
+   * in the background.
+   */
+  awaitLastTeardown(): Promise<void> | null;
 }
 
 export interface MakeServerOptions {
@@ -132,26 +141,30 @@ export function makeServer(initial: ServerDeps, options: MakeServerOptions = {})
     const old: ReadyDeps = gen.deps;
     return new Promise<void>((resolve) => {
       let done = false;
+      let tick: ReturnType<typeof setInterval> | null = null;
+      let hardStop: ReturnType<typeof setTimeout> | null = null;
       const fire = () => {
         if (done) return;
         done = true;
+        // Always cancel both timers — the hard-timeout path used to leak
+        // the polling interval until process exit because fire() ran
+        // from the setTimeout callback without clearing setInterval.
+        if (tick !== null) clearInterval(tick);
+        if (hardStop !== null) clearTimeout(hardStop);
         options.onBeforeTeardown?.(old);
         void teardownReadyDeps(old).finally(resolve);
       };
-      const hardStop = setTimeout(fire, TEARDOWN_HARD_TIMEOUT_MS);
+      hardStop = setTimeout(fire, TEARDOWN_HARD_TIMEOUT_MS);
       // Poll cheaply for drain. The proxy is the only path that mutates
       // inflight, so this resolves the first tick after the last response
-      // body settles (TransformStream `flush` fires on close). setInterval
-      // keeps the JS thread free; clearInterval + fire runs once count == 0.
-      const tick = setInterval(() => {
-        if (gen.inflight <= 0) {
-          clearInterval(tick);
-          clearTimeout(hardStop);
-          fire();
-        }
+      // body settles (TransformStream `flush` fires on close).
+      tick = setInterval(() => {
+        if (gen.inflight <= 0) fire();
       }, 25);
     });
   }
+
+  let lastTeardown: Promise<void> | null = null;
 
   async function doSwap(next: ServerDeps): Promise<void> {
     const previous = active;
@@ -162,10 +175,14 @@ export function makeServer(initial: ServerDeps, options: MakeServerOptions = {})
       inflight: 0,
       retired: false,
     };
-    // Await drain + teardown so callers (onboarding init handler, tests)
-    // observe completion. For no-vault→ready swaps this resolves
-    // immediately because there are no old ready deps to retire.
-    await scheduleTeardown(previous);
+    // Fire teardown in the background. The request that triggered this
+    // swap is itself counted in `previous.inflight` via the proxy, so
+    // awaiting drain here would deadlock until the 30s hard-stop and
+    // then close db/embedder underneath any sibling in-flight requests.
+    // Background teardown lets the init handler return immediately while
+    // drain detection continues to wait for genuine in-flight work to
+    // finish before closing resources.
+    lastTeardown = scheduleTeardown(previous);
   }
 
   const proxy = new Hono();
@@ -213,5 +230,6 @@ export function makeServer(initial: ServerDeps, options: MakeServerOptions = {})
     app: proxy,
     swap: (deps) => doSwap(deps),
     current: () => active.deps,
+    awaitLastTeardown: () => lastTeardown,
   };
 }
