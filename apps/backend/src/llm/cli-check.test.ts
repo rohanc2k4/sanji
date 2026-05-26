@@ -56,7 +56,7 @@ describe('checkClaudeCli', () => {
 
   it('returns installed:false on ENOENT (cli not installed)', async () => {
     const enoent: NodeJS.ErrnoException = Object.assign(new Error('spawn claude ENOENT'), { code: 'ENOENT' });
-    spawnMock.mockReturnValueOnce(fakeChild({ errorOnStart: enoent }));
+    spawnMock.mockImplementationOnce(() => fakeChild({ errorOnStart: enoent }));
     const { checkClaudeCli } = await import('./cli-check.js');
     const result = await checkClaudeCli();
     expect(result.installed).toBe(false);
@@ -64,7 +64,7 @@ describe('checkClaudeCli', () => {
   });
 
   it('returns installed:false with reason on non-zero exit with stderr', async () => {
-    spawnMock.mockReturnValueOnce(fakeChild({ stderr: 'corrupt binary\n', exitCode: 1 }));
+    spawnMock.mockImplementationOnce(() => fakeChild({ stderr: 'corrupt binary\n', exitCode: 1 }));
     const { checkClaudeCli } = await import('./cli-check.js');
     const result = await checkClaudeCli();
     expect(result.installed).toBe(false);
@@ -72,10 +72,38 @@ describe('checkClaudeCli', () => {
   });
 
   it('returns installed:false on unparseable stdout', async () => {
-    spawnMock.mockReturnValueOnce(fakeChild({ stdout: 'helo there\n', exitCode: 0 }));
+    spawnMock.mockImplementationOnce(() => fakeChild({ stdout: 'helo there\n', exitCode: 0 }));
     const { checkClaudeCli } = await import('./cli-check.js');
     const result = await checkClaudeCli();
     expect(result.installed).toBe(false);
     expect(result.reason).toMatch(/did not return a version/i);
+  });
+
+  it('kills the spawned child and resolves "check timed out" when the probe exceeds the timeout', async () => {
+    // Build a child that emits nothing: the implementation's 3s setTimeout
+    // wins the race and the kill() spy fires. Fake timers let us drive the
+    // 3s clock without slowing the test suite.
+    vi.useFakeTimers();
+    const hung = (() => {
+      const emitter = new EventEmitter() as EventEmitter & {
+        stdout: Readable;
+        stderr: Readable;
+        kill: ReturnType<typeof vi.fn>;
+      };
+      emitter.stdout = new EventEmitter() as unknown as Readable;
+      emitter.stderr = new EventEmitter() as unknown as Readable;
+      emitter.kill = vi.fn();
+      // Deliberately never emits 'close' or 'error'.
+      return emitter;
+    })();
+    spawnMock.mockImplementationOnce(() => hung);
+    const { checkClaudeCli } = await import('./cli-check.js');
+    const promise = checkClaudeCli();
+    await vi.advanceTimersByTimeAsync(3_001);
+    const result = await promise;
+    vi.useRealTimers();
+    expect(result.installed).toBe(false);
+    expect(result.reason).toMatch(/timed out/i);
+    expect(hung.kill).toHaveBeenCalled();
   });
 });
