@@ -7,6 +7,7 @@ import { loadOrInitConfig, saveConfig } from '../../config/loader.js';
 import { openDb } from '../../db/client.js';
 import { runMigrations } from '../../db/migrate.js';
 import { makeAdapter } from '../../llm/factory.js';
+import { checkClaudeCli } from '../../llm/cli-check.js';
 import { ConfigSchema } from '@sanji/shared';
 import { dtoToConfig } from '../dto.js';
 import { bootstrapReadyDeps } from '../bootstrap.js';
@@ -164,6 +165,13 @@ export function onboardingRoute(deps: OnboardingRouteDeps = {}) {
     }
 
     return c.json(dto);
+  });
+
+  r.post('/api/onboarding/check-claude-cli', async (c) => {
+    // No request body; the probe needs no parameters. Empty {} is accepted
+    // to match how the frontend POSTs (apiFetch always sends a body).
+    const result = await checkClaudeCli();
+    return c.json(result);
   });
 
   return r;
