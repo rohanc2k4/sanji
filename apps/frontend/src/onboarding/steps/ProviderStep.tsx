@@ -3,9 +3,10 @@ import { AlertCircle, CheckCircle2, KeyRound, Sparkles } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { testProvider } from '@/api/onboarding';
+import { testProvider, checkClaudeCli } from '@/api/onboarding';
 import { isApiError } from '@sanji/shared';
 import type { StepProps } from './VaultStep';
+import { CliInstallSubstep } from './CliInstallSubstep';
 
 type Mode = 'claude-code' | 'anthropic-api';
 
@@ -13,19 +14,20 @@ export function ProviderStep({ state, dispatch }: StepProps) {
   const [mode, setMode] = useState<Mode>(state.providerMode);
   const [apiKey, setApiKey] = useState(state.anthropicApiKey);
   const [busy, setBusy] = useState(false);
+  const [rechecking, setRechecking] = useState(false);
+  const [lastRecheckFailed, setLastRecheckFailed] = useState(false);
 
-  async function onTest(selected: Mode) {
-    setMode(selected);
+  async function runProviderTest(selected: Mode, keyForTest: string) {
     setBusy(true);
     try {
       const result = await testProvider({
         mode: selected,
-        ...(selected === 'anthropic-api' && apiKey ? { anthropicApiKey: apiKey } : {}),
+        ...(selected === 'anthropic-api' && keyForTest ? { anthropicApiKey: keyForTest } : {}),
       });
       dispatch({
         type: 'set-provider',
         mode: selected,
-        anthropicApiKey: selected === 'anthropic-api' ? apiKey : undefined,
+        anthropicApiKey: selected === 'anthropic-api' ? keyForTest : undefined,
         testResult: result,
       });
     } catch (err: unknown) {
@@ -37,12 +39,79 @@ export function ProviderStep({ state, dispatch }: StepProps) {
       dispatch({
         type: 'set-provider',
         mode: selected,
-        anthropicApiKey: selected === 'anthropic-api' ? apiKey : undefined,
+        anthropicApiKey: selected === 'anthropic-api' ? keyForTest : undefined,
         testResult: { ok: false, reason },
       });
     } finally {
       setBusy(false);
     }
+  }
+
+  // Subscription path: probe the CLI BEFORE attempting credentials. If
+  // installed, immediately run the existing testProvider flow. If not
+  // installed, dispatch the cli-check result; render() picks up the
+  // sub-step on the next pass.
+  async function onClaudeCodeCard() {
+    setMode('claude-code');
+    setBusy(true);
+    try {
+      const probe = await checkClaudeCli();
+      if (!probe.installed) {
+        dispatch({ type: 'set-cli-check', result: probe });
+        setLastRecheckFailed(false);
+        return;
+      }
+    } catch {
+      // Network or other failure reaching the probe endpoint; fall through
+      // to testProvider so the existing error surface kicks in.
+    } finally {
+      setBusy(false);
+    }
+    await runProviderTest('claude-code', '');
+  }
+
+  async function onApiKeyTest() {
+    setMode('anthropic-api');
+    await runProviderTest('anthropic-api', apiKey);
+  }
+
+  async function onRecheck() {
+    setRechecking(true);
+    try {
+      const probe = await checkClaudeCli();
+      if (probe.installed) {
+        dispatch({ type: 'clear-cli-check' });
+        setLastRecheckFailed(false);
+        // User has already chosen subscription; auto-run credentials.
+        await runProviderTest('claude-code', '');
+        return;
+      }
+      // Still not installed: update the cli-check state with any new reason
+      // and flag the "still not detected" hint for the sub-step.
+      dispatch({ type: 'set-cli-check', result: probe });
+      setLastRecheckFailed(true);
+    } finally {
+      setRechecking(false);
+    }
+  }
+
+  function onBackToProviderChoice() {
+    dispatch({ type: 'clear-cli-check' });
+    setLastRecheckFailed(false);
+  }
+
+  // Sub-step takeover: rendered when the cli-check probe came back not-installed.
+  if (state.cliCheck && !state.cliCheck.installed) {
+    return (
+      <CliInstallSubstep
+        os={state.cliCheck.os}
+        reason={state.cliCheck.reason}
+        rechecking={rechecking}
+        lastRecheckFailed={lastRecheckFailed}
+        onRecheck={onRecheck}
+        onBack={onBackToProviderChoice}
+      />
+    );
   }
 
   const result = state.providerTestResult;
@@ -54,7 +123,7 @@ export function ProviderStep({ state, dispatch }: StepProps) {
         title="Claude Code subscription"
         subtitle="No per-token bill. Uses your existing Pro / Max plan."
         icon={<Sparkles className="size-4" />}
-        onClick={() => onTest('claude-code')}
+        onClick={onClaudeCodeCard}
         busy={busy && mode === 'claude-code'}
       />
 
@@ -82,7 +151,7 @@ export function ProviderStep({ state, dispatch }: StepProps) {
               />
               <Button
                 size="sm"
-                onClick={() => onTest('anthropic-api')}
+                onClick={onApiKeyTest}
                 disabled={busy || !apiKey.trim()}
               >
                 {busy ? 'Testing…' : 'Test'}
