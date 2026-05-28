@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { TreeRow } from './TreeRow';
 import type { TreeNode } from './vault-tree';
@@ -31,6 +31,8 @@ const baseProps = {
 };
 
 describe('TreeRow', () => {
+  beforeEach(() => vi.clearAllMocks());
+
   it('note rows show ✎ and 🗑 hover icons', () => {
     render(<ul><TreeRow node={noteNode} {...baseProps} /></ul>);
     expect(screen.getByLabelText('Rename a.md')).toBeInTheDocument();
@@ -77,6 +79,34 @@ describe('TreeRow', () => {
     expect(baseProps.onDropOnFolder).toHaveBeenCalledWith(
       { kind: 'note', path: 'cmsc416/x.md' },
       folderNode,
+    );
+  });
+
+  it('drop of a folder onto itself does NOT call onDropOnFolder', () => {
+    render(<ul><TreeRow node={folderNode} {...baseProps} /></ul>);
+    const summary = screen.getByText('inbox').closest('summary')!;
+    const selfPayload = JSON.stringify({ kind: 'folder', path: 'inbox' });
+    fireEvent.drop(summary, { dataTransfer: { getData: vi.fn().mockReturnValue(selfPayload) } });
+    expect(baseProps.onDropOnFolder).not.toHaveBeenCalled();
+  });
+
+  it('drop of an ancestor folder onto its descendant does NOT call onDropOnFolder', () => {
+    const subFolder: TreeNode = { kind: 'folder', name: 'sub', path: 'inbox/sub', children: [], ephemeral: false };
+    render(<ul><TreeRow node={subFolder} {...baseProps} /></ul>);
+    const summary = screen.getByText('sub').closest('summary')!;
+    const ancestorPayload = JSON.stringify({ kind: 'folder', path: 'inbox' });
+    fireEvent.drop(summary, { dataTransfer: { getData: vi.fn().mockReturnValue(ancestorPayload) } });
+    expect(baseProps.onDropOnFolder).not.toHaveBeenCalled();
+  });
+
+  it('folder dragstart sets the folder payload', () => {
+    render(<ul><TreeRow node={folderNode} {...baseProps} /></ul>);
+    const summary = screen.getByText('inbox').closest('summary')!;
+    const setData = vi.fn();
+    fireEvent.dragStart(summary, { dataTransfer: { setData, effectAllowed: '' } });
+    expect(setData).toHaveBeenCalledWith(
+      'application/x-sanji-path',
+      JSON.stringify({ kind: 'folder', path: 'inbox' }),
     );
   });
 });
