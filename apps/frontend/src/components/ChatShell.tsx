@@ -18,6 +18,9 @@ export interface ChatShellProps {
   onAddSource: () => void;
   onNoteSaved?: (path: string) => void;
   onNoteRenamed?: (from: string, to: string) => void;
+  onNoteDeleted?: (path: string) => void;
+  onFolderMoved?: (from: string, to: string) => void;
+  onFolderDeleted?: (path: string) => void;
   sidebarRefreshKey?: number;
   config?: ConfigDto | null;
 }
@@ -30,6 +33,9 @@ export function ChatShell({
   onAddSource,
   onNoteSaved,
   onNoteRenamed,
+  onNoteDeleted,
+  onFolderMoved,
+  onFolderDeleted,
   sidebarRefreshKey,
   config,
 }: ChatShellProps) {
@@ -119,6 +125,9 @@ export function ChatShell({
               onAddSource={onAddSource}
               refreshKey={sidebarRefreshKey}
               onRenamed={onNoteRenamed}
+              onDeleted={onNoteDeleted}
+              onFolderMoved={onFolderMoved}
+              onFolderDeleted={onFolderDeleted}
             />
           </div>
         </aside>
