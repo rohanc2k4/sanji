@@ -3,7 +3,6 @@ import type { NoteSummary } from '@sanji/shared';
 export type TreeNode =
   | { kind: 'folder'; name: string; path: string; children: TreeNode[]; ephemeral: boolean }
   | { kind: 'note';   name: string; path: string; note: NoteSummary }
-  | { kind: 'rename'; name: string; path: string; initialDraft: string }
   | { kind: 'new-item'; parentPath: string; itemKind: 'note' | 'folder' };
 
 function ensureFolder(parent: TreeNode[], name: string, path: string): TreeNode & { kind: 'folder' } {

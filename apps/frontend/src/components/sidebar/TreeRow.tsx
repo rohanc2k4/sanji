@@ -35,7 +35,6 @@ function relTime(ms: number): string {
 function rowKey(c: TreeNode): string {
   if (c.kind === 'folder') return `folder:${c.path}`;
   if (c.kind === 'note') return `note:${c.path}`;
-  if (c.kind === 'rename') return `rename:${c.path}`;
   return `new-item:${c.parentPath}:${c.itemKind}`;
 }
 
@@ -111,19 +110,6 @@ export function TreeRow(props: TreeRowProps) {
             ><Trash2 className="size-3" /></button>
           </div>
         </div>
-      </li>
-    );
-  }
-
-  if (node.kind === 'rename') {
-    return (
-      <li>
-        <RenameRow
-          indent={indent}
-          initialDraft={node.initialDraft}
-          onCommit={(d) => props.onCommitRename(node.path, d)}
-          onCancel={props.onCancelRename}
-        />
       </li>
     );
   }

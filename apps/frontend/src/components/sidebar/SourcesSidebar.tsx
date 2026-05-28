@@ -256,7 +256,6 @@ export function SourcesSidebar(props: SourcesSidebarProps) {
   function rowKey(n: TreeNode): string {
     if (n.kind === 'folder') return `folder:${n.path}`;
     if (n.kind === 'note') return `note:${n.path}`;
-    if (n.kind === 'rename') return `rename:${n.path}`;
     return `new-item:${n.parentPath}:${n.itemKind}`;
   }
 
