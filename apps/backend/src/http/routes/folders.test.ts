@@ -96,3 +96,47 @@ describe('POST /api/folders/move', () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe('DELETE /api/folders/*', () => {
+  it('moves the whole subtree to .sanji/trash/<rel-path>', async () => {
+    mkdirSync(join(dir, 'archive/2025'), { recursive: true });
+    writeFileSync(join(dir, 'archive/2025/a.md'), 'a');
+    writeFileSync(join(dir, 'archive/2025/b.md'), 'b');
+    const { app, paths } = mount();
+    const res = await app.request('/api/folders/archive', { method: 'DELETE' });
+    expect(res.status).toBe(200);
+    expect(existsSync(join(dir, 'archive'))).toBe(false);
+    expect(existsSync(join(paths.sanjiDir, 'trash/archive/2025/a.md'))).toBe(true);
+    expect(existsSync(join(paths.sanjiDir, 'trash/archive/2025/b.md'))).toBe(true);
+  });
+
+  it('purges every contained note from the repo', async () => {
+    mkdirSync(join(dir, 'box'), { recursive: true });
+    writeFileSync(join(dir, 'box/a.md'), '---\ntitle: A\n---\nbody');
+    writeFileSync(join(dir, 'box/b.md'), '---\ntitle: B\n---\nbody');
+    const { app, repo, indexer } = mount({ withIndexer: true });
+    await indexer!.indexFile(dir, 'box/a.md');
+    await indexer!.indexFile(dir, 'box/b.md');
+    expect(repo.getNote('box/a.md')).not.toBeNull();
+    await app.request('/api/folders/box', { method: 'DELETE' });
+    expect(repo.getNote('box/a.md')).toBeNull();
+    expect(repo.getNote('box/b.md')).toBeNull();
+  });
+
+  it('suffixes trash path with .timestamp on collision', async () => {
+    mkdirSync(join(dir, 'x'), { recursive: true });
+    const { app, paths } = mount();
+    await app.request('/api/folders/x', { method: 'DELETE' });
+    mkdirSync(join(dir, 'x'), { recursive: true });
+    const res = await app.request('/api/folders/x', { method: 'DELETE' });
+    expect(res.status).toBe(200);
+    const trashed = readdirSync(join(paths.sanjiDir, 'trash')).filter((n) => n.startsWith('x'));
+    expect(trashed.length).toBe(2);
+  });
+
+  it('returns 404 on missing folder', async () => {
+    const { app } = mount();
+    const res = await app.request('/api/folders/nope', { method: 'DELETE' });
+    expect(res.status).toBe(404);
+  });
+});

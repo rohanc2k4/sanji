@@ -75,5 +75,40 @@ export function foldersRoute(deps: { paths: VaultPaths; repo?: IndexRepo; indexe
     return c.json({ from: fromValid, to: toValid });
   });
 
+  r.delete('/api/folders/*', async (c) => {
+    const raw = c.req.path.replace(/^\/api\/folders\//, '');
+    const decoded = decodeURIComponent(raw);
+    let validated: string;
+    try { validated = validateVaultRelativePath(decoded); }
+    catch (err) { return c.json({ kind: 'api-error', code: 'BAD_PATH', message: (err as Error).message }, 400); }
+    const abs = join(deps.paths.vault, validated);
+    if (!existsSync(abs) || !statSync(abs).isDirectory()) {
+      return c.json({ kind: 'api-error', code: 'NOT_FOUND', message: validated }, 404);
+    }
+    const trashRoot = join(deps.paths.sanjiDir, 'trash');
+    let trashAbs = join(trashRoot, validated);
+    if (existsSync(trashAbs)) {
+      trashAbs = `${trashAbs}.${Date.now()}`;
+    }
+    // Snapshot the contained .md paths BEFORE the rename so we can purge the repo
+    // after the directory is gone from its original location.
+    const containedNotes = walkMarkdown(abs, validated);
+    try {
+      await mkdir(dirname(trashAbs), { recursive: true });
+      await fsRename(abs, trashAbs);
+    } catch (err) {
+      return c.json({ kind: 'api-error', code: 'TRASH_FAILED', message: (err as Error).message }, 500);
+    }
+    if (deps.repo) {
+      for (const notePath of containedNotes) {
+        try { deps.repo.deleteNote(notePath); }
+        catch (err) {
+          process.stderr.write(`post-delete repo purge failed for ${notePath}: ${err instanceof Error ? err.message : String(err)}\n`);
+        }
+      }
+    }
+    return c.json({ path: validated, trashedTo: trashAbs.slice(deps.paths.vault.length + 1) });
+  });
+
   return r;
 }
