@@ -7,6 +7,7 @@ import { listNotes } from '@/api/vault';
 import { renameNote } from '@/api/notes';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { RenameRow } from './RenameRow';
 
 export interface SourcesSidebarProps {
   selectedPath: string | null;
@@ -89,7 +90,6 @@ function TreeRow(props: TreeRowProps) {
       return (
         <li>
           <RenameRow
-            path={note.path}
             indent={indent}
             initialDraft={node.name.replace(/\.md$/, '')}
             onCommit={(draft) => props.onCommitRename(note.path, draft)}
@@ -155,55 +155,6 @@ function TreeRow(props: TreeRowProps) {
         </ul>
       </details>
     </li>
-  );
-}
-
-interface RenameRowProps {
-  path: string;
-  indent: number;
-  initialDraft: string;
-  onCommit: (draft: string) => void;
-  onCancel: () => void;
-}
-
-function RenameRow({ indent, initialDraft, onCommit, onCancel }: RenameRowProps) {
-  const [draft, setDraft] = useState(initialDraft);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    inputRef.current?.focus();
-    inputRef.current?.select();
-  }, []);
-
-  // The input is sized + chromed to match the leaf TreeRow button exactly:
-  // same `h-7` row, same `text-sm`, no border (which would shift width),
-  // transparent background flush with the sidebar. Focus state shows via a
-  // ring (box-shadow, no layout impact) and a subtle background contrast.
-  // Combined with the viewport meta in index.html (maximum-scale=1.0), the
-  // rename mode produces zero visible movement.
-  return (
-    <div
-      style={{ paddingLeft: indent }}
-      className="flex h-7 w-full items-center gap-1.5 rounded pr-2 text-sm"
-    >
-      <FileText className="size-3.5 shrink-0 text-muted-foreground/60" />
-      <input
-        ref={inputRef}
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            onCommit(draft);
-          } else if (e.key === 'Escape') {
-            e.preventDefault();
-            onCancel();
-          }
-        }}
-        onBlur={() => onCommit(draft)}
-        className="h-7 min-w-0 flex-1 rounded border-0 bg-background/60 px-1 text-sm text-foreground outline-none focus:bg-background focus:ring-1 focus:ring-ring"
-      />
-    </div>
   );
 }
 
