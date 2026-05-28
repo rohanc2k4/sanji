@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Inbox, Plus, FolderPlus } from 'lucide-react';
 import { toast } from 'sonner';
-import { isApiError } from '@sanji/shared';
+import { isApiError, type NoteSummary } from '@sanji/shared';
 import { listNotes } from '@/api/vault';
 import { renameNote } from '@/api/notes';
 import { Button } from '@/components/ui/button';
@@ -26,7 +26,7 @@ type LoadState =
   | { kind: 'loading' }
   | { kind: 'no-vault' }
   | { kind: 'error'; message: string }
-  | { kind: 'ready'; tree: TreeNode[] };
+  | { kind: 'ready'; rows: NoteSummary[] };
 
 function containsFolderAtPath(tree: TreeNode[], path: string): boolean {
   for (const node of tree) {
@@ -79,7 +79,10 @@ export function SourcesSidebar(props: SourcesSidebarProps) {
     listNotes()
       .then((rows) => {
         if (cancelled) return;
-        setState({ kind: 'ready', tree: buildTree(rows, ephemeralFolders) });
+        // Store raw rows; the display tree is derived from rows + ephemeralFolders
+        // via useMemo so ephemeral folder additions appear immediately without
+        // requiring a reload.
+        setState({ kind: 'ready', rows });
         // Prune ephemeral folders that have materialized (a note is now under them).
         setEphemeralFolders((prev) => {
           if (prev.size === 0) return prev;
@@ -103,12 +106,16 @@ export function SourcesSidebar(props: SourcesSidebarProps) {
         else setState({ kind: 'error', message: String(err) });
       });
     return () => { cancelled = true; };
-  // intentionally omit ephemeralFolders from deps: it's read for the prune
-  // pass, not as a trigger; including it would cause an infinite reload loop.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reloadKey, refreshKey]);
 
-  const isReadyEmpty = state.kind === 'ready' && state.tree.length === 0;
+  // Derive the display tree on every render so ephemeral folder additions
+  // (which don't trigger a listNotes reload) appear immediately.
+  const displayTree = useMemo(
+    () => (state.kind === 'ready' ? buildTree(state.rows, ephemeralFolders) : []),
+    [state, ephemeralFolders],
+  );
+
+  const isReadyEmpty = state.kind === 'ready' && displayTree.length === 0;
   useEffect(() => {
     if (!isReadyEmpty || autoRetried) return;
     const timer = setTimeout(() => {
@@ -130,7 +137,7 @@ export function SourcesSidebar(props: SourcesSidebarProps) {
 
     const isFolderRename =
       ephemeralFolders.has(from) ||
-      (state.kind === 'ready' && containsFolderAtPath(state.tree, from));
+      containsFolderAtPath(displayTree, from);
 
     if (isFolderRename) {
       if (ephemeralFolders.has(from)) {
@@ -286,9 +293,9 @@ export function SourcesSidebar(props: SourcesSidebarProps) {
             <Button size="sm" variant="outline" onClick={() => setReloadKey((k) => k + 1)}>Retry</Button>
           </div>
         )}
-        {state.kind === 'ready' && state.tree.length > 0 && (
+        {state.kind === 'ready' && displayTree.length > 0 && (
           <ul className="px-1 pb-2">
-            {state.tree.map((n) => (
+            {displayTree.map((n) => (
               <TreeRow
                 key={rowKey(n)}
                 node={n}
