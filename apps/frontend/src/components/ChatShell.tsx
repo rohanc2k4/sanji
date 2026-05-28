@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { ChatPane } from './ChatPane';
 import { Composer } from './Composer';
 import { EditorPanel } from './EditorPanel';
-import { SourcesSidebar } from './SourcesSidebar';
+import { SourcesSidebar } from './sidebar/SourcesSidebar';
 import { ModelPicker } from '@/chat/ModelPicker';
 import { useChat } from '@/hooks/useChat';
 
