@@ -137,6 +137,43 @@ export function notesRoute(deps: { paths: VaultPaths; repo?: IndexRepo; indexer?
     }
   });
 
+  r.post('/api/notes', async (c) => {
+    const body = await c.req.json().catch(() => null) as { path?: unknown; content?: unknown } | null;
+    if (!body || typeof body.path !== 'string') {
+      return c.json({ kind: 'api-error', code: 'BAD_BODY', message: 'path must be string' }, 400);
+    }
+    if (body.content !== undefined && typeof body.content !== 'string') {
+      return c.json({ kind: 'api-error', code: 'BAD_BODY', message: 'content must be string when provided' }, 400);
+    }
+    let validated: string;
+    try { validated = validateVaultRelativePath(body.path); }
+    catch (err) { return c.json({ kind: 'api-error', code: 'BAD_PATH', message: (err as Error).message }, 400); }
+    const abs = join(deps.paths.vault, validated);
+    if (existsSync(abs)) {
+      return c.json({ kind: 'api-error', code: 'TARGET_EXISTS', message: validated }, 409);
+    }
+    const titleFromPath = basename(validated, extname(validated));
+    const skeleton = body.content ?? `---\ntitle: ${titleFromPath}\ncreated: ${new Date().toISOString()}\n---\n\n# ${titleFromPath}\n\n`;
+    try {
+      await mkdir(dirname(abs), { recursive: true });
+      await writeFile(abs, skeleton, 'utf8');
+    } catch (err) {
+      return c.json({ kind: 'api-error', code: 'FS_FAILED', message: (err as Error).message }, 500);
+    }
+    if (deps.indexer) {
+      try { await deps.indexer.indexFile(deps.paths.vault, validated); }
+      catch (err) {
+        if (deps.repo) deps.repo.invalidateNoteIndexVersion(validated);
+        process.stderr.write(`post-create indexFile failed for ${validated}: ${(err as Error).message}\n`);
+      }
+    } else if (deps.repo) {
+      const mtimeMs = statSync(abs).mtimeMs;
+      const parsed = parseNote(validated, skeleton, mtimeMs);
+      deps.repo.upsertNote(parsed.note);
+    }
+    return c.json({ path: validated });
+  });
+
   r.post('/api/notes/rename', async (c) => {
     const body = await c.req.json().catch(() => null) as { from?: unknown; to?: unknown } | null;
     if (!body || typeof body.from !== 'string' || typeof body.to !== 'string') {

@@ -335,4 +335,62 @@ describe('notes route', () => {
     });
     expect(collision.status).toBe(409);
   });
+
+  it('POST /api/notes creates a note with skeleton frontmatter + H1', async () => {
+    const { app } = mount();
+    const res = await app.request('/api/notes', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ path: 'scratch/todo.md' }),
+    });
+    expect(res.status).toBe(200);
+    const onDisk = readFileSync(join(dir, 'scratch/todo.md'), 'utf8');
+    expect(onDisk).toMatch(/^---\ntitle: todo\ncreated: \d{4}-\d{2}-\d{2}T/);
+    expect(onDisk).toMatch(/\n# todo\n/);
+  });
+
+  it('POST /api/notes accepts explicit content and skips the skeleton', async () => {
+    const { app } = mount();
+    const res = await app.request('/api/notes', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ path: 'a.md', content: 'hello body\n' }),
+    });
+    expect(res.status).toBe(200);
+    expect(readFileSync(join(dir, 'a.md'), 'utf8')).toBe('hello body\n');
+  });
+
+  it('POST /api/notes returns 409 if target exists', async () => {
+    writeFileSync(join(dir, 'a.md'), 'already here');
+    const { app } = mount();
+    const res = await app.request('/api/notes', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ path: 'a.md' }),
+    });
+    expect(res.status).toBe(409);
+    const body = await res.json() as { code: string };
+    expect(body.code).toBe('TARGET_EXISTS');
+  });
+
+  it('POST /api/notes returns 400 on bad path', async () => {
+    const { app } = mount();
+    const res = await app.request('/api/notes', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ path: '../escape.md' }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /api/notes creates parent dirs via mkdir -p', async () => {
+    const { app } = mount();
+    const res = await app.request('/api/notes', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ path: 'a/b/c/deep.md' }),
+    });
+    expect(res.status).toBe(200);
+    expect(existsSync(join(dir, 'a/b/c/deep.md'))).toBe(true);
+  });
 });
