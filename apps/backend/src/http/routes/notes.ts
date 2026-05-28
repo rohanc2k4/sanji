@@ -153,7 +153,8 @@ export function notesRoute(deps: { paths: VaultPaths; repo?: IndexRepo; indexer?
       return c.json({ kind: 'api-error', code: 'TARGET_EXISTS', message: validated }, 409);
     }
     const titleFromPath = basename(validated, extname(validated));
-    const skeleton = body.content ?? `---\ntitle: ${titleFromPath}\ncreated: ${new Date().toISOString()}\n---\n\n# ${titleFromPath}\n\n`;
+    const safeTitle = /[:#\n]/.test(titleFromPath) ? JSON.stringify(titleFromPath) : titleFromPath;
+    const skeleton = body.content ?? `---\ntitle: ${safeTitle}\ncreated: ${new Date().toISOString()}\n---\n\n# ${titleFromPath}\n\n`;
     try {
       await mkdir(dirname(abs), { recursive: true });
       await writeFile(abs, skeleton, 'utf8');
@@ -164,7 +165,11 @@ export function notesRoute(deps: { paths: VaultPaths; repo?: IndexRepo; indexer?
       try { await deps.indexer.indexFile(deps.paths.vault, validated); }
       catch (err) {
         if (deps.repo) deps.repo.invalidateNoteIndexVersion(validated);
-        process.stderr.write(`post-create indexFile failed for ${validated}: ${(err as Error).message}\n`);
+        process.stderr.write(
+          `post-create indexFile failed for ${validated}: ${
+            err instanceof Error ? err.message : String(err)
+          }\n`,
+        );
       }
     } else if (deps.repo) {
       const mtimeMs = statSync(abs).mtimeMs;
