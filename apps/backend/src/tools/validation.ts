@@ -8,6 +8,9 @@ export function validateVaultRelativePath(input: unknown): string {
   if (input.split(/[\\/]/).some((seg) => seg === '..')) {
     throw new Error("'path' must not contain traversal segments ('..')");
   }
+  if (input.split(/[\\/]/)[0] === '.sanji') {
+    throw new Error("'path' must not point inside the .sanji/ directory");
+  }
   return input;
 }
 
