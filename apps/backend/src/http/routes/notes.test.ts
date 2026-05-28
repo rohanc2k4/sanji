@@ -393,4 +393,44 @@ describe('notes route', () => {
     expect(res.status).toBe(200);
     expect(existsSync(join(dir, 'a/b/c/deep.md'))).toBe(true);
   });
+
+  it('DELETE /api/notes/* moves file to .sanji/trash/<rel-path>', async () => {
+    writeFileSync(join(dir, 'a.md'), 'body');
+    const { app, paths } = mount();
+    const res = await app.request('/api/notes/a.md', { method: 'DELETE' });
+    expect(res.status).toBe(200);
+    expect(existsSync(join(dir, 'a.md'))).toBe(false);
+    expect(existsSync(join(paths.sanjiDir, 'trash', 'a.md'))).toBe(true);
+  });
+
+  it('DELETE /api/notes/* suffixes trash path on collision', async () => {
+    writeFileSync(join(dir, 'a.md'), 'first');
+    const { app, paths } = mount();
+    let res = await app.request('/api/notes/a.md', { method: 'DELETE' });
+    expect(res.status).toBe(200);
+    writeFileSync(join(dir, 'a.md'), 'second');
+    res = await app.request('/api/notes/a.md', { method: 'DELETE' });
+    expect(res.status).toBe(200);
+    const trashed = readdirSync(join(paths.sanjiDir, 'trash'));
+    expect(trashed.filter((n) => n.startsWith('a.md')).length).toBe(2);
+  });
+
+  it('DELETE /api/notes/* purges repo entry', async () => {
+    writeFileSync(join(dir, 'a.md'), '---\ntitle: A\n---\nbody');
+    const { app, repo } = mount({ withIndexer: true });
+    await app.request('/api/notes/a.md', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ content: '---\ntitle: A\n---\nbody' }),
+    });
+    expect(repo.getNote('a.md')).not.toBeNull();
+    await app.request('/api/notes/a.md', { method: 'DELETE' });
+    expect(repo.getNote('a.md')).toBeNull();
+  });
+
+  it('DELETE /api/notes/* returns 404 on missing source', async () => {
+    const { app } = mount();
+    const res = await app.request('/api/notes/missing.md', { method: 'DELETE' });
+    expect(res.status).toBe(404);
+  });
 });

@@ -179,6 +179,36 @@ export function notesRoute(deps: { paths: VaultPaths; repo?: IndexRepo; indexer?
     return c.json({ path: validated });
   });
 
+  r.delete('/api/notes/*', async (c) => {
+    const raw = c.req.path.replace(/^\/api\/notes\//, '');
+    const decoded = decodeURIComponent(raw);
+    let validated: string;
+    try { validated = validateVaultRelativePath(decoded); }
+    catch (err) { return c.json({ kind: 'api-error', code: 'BAD_PATH', message: (err as Error).message }, 400); }
+    const abs = join(deps.paths.vault, validated);
+    if (!existsSync(abs)) {
+      return c.json({ kind: 'api-error', code: 'NOT_FOUND', message: validated }, 404);
+    }
+    const trashRoot = join(deps.paths.sanjiDir, 'trash');
+    let trashAbs = join(trashRoot, validated);
+    if (existsSync(trashAbs)) {
+      trashAbs = `${trashAbs}.${Date.now()}`;
+    }
+    try {
+      await mkdir(dirname(trashAbs), { recursive: true });
+      await fsRename(abs, trashAbs);
+    } catch (err) {
+      return c.json({ kind: 'api-error', code: 'TRASH_FAILED', message: (err as Error).message }, 500);
+    }
+    if (deps.repo) {
+      try { deps.repo.deleteNote(validated); }
+      catch (err) {
+        process.stderr.write(`post-delete repo purge failed for ${validated}: ${err instanceof Error ? err.message : String(err)}\n`);
+      }
+    }
+    return c.json({ path: validated, trashedTo: trashAbs.slice(deps.paths.vault.length + 1) });
+  });
+
   r.post('/api/notes/rename', async (c) => {
     const body = await c.req.json().catch(() => null) as { from?: unknown; to?: unknown } | null;
     if (!body || typeof body.from !== 'string' || typeof body.to !== 'string') {
