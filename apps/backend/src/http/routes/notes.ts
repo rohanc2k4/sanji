@@ -4,7 +4,7 @@ import { existsSync, statSync } from 'node:fs';
 import { basename, dirname, extname, join } from 'node:path';
 import { parseNote } from '../../vault/parse.js';
 import { writeNoteTool } from '../../tools/write-note.js';
-import { validateVaultRelativePath } from '../../tools/validation.js';
+import { validateVaultRelativePath, validateUserVaultPath } from '../../tools/validation.js';
 import type { VaultPaths } from '../../config/paths.js';
 import type { ToolContext } from '../../tools/types.js';
 import type { Indexer } from '../../index/indexer.js';
@@ -146,7 +146,7 @@ export function notesRoute(deps: { paths: VaultPaths; repo?: IndexRepo; indexer?
       return c.json({ kind: 'api-error', code: 'BAD_BODY', message: 'content must be string when provided' }, 400);
     }
     let validated: string;
-    try { validated = validateVaultRelativePath(body.path); }
+    try { validated = validateUserVaultPath(body.path); }
     catch (err) { return c.json({ kind: 'api-error', code: 'BAD_PATH', message: (err as Error).message }, 400); }
     const abs = join(deps.paths.vault, validated);
     if (existsSync(abs)) {
@@ -183,7 +183,7 @@ export function notesRoute(deps: { paths: VaultPaths; repo?: IndexRepo; indexer?
     const raw = c.req.path.replace(/^\/api\/notes\//, '');
     const decoded = decodeURIComponent(raw);
     let validated: string;
-    try { validated = validateVaultRelativePath(decoded); }
+    try { validated = validateUserVaultPath(decoded); }
     catch (err) { return c.json({ kind: 'api-error', code: 'BAD_PATH', message: (err as Error).message }, 400); }
     const abs = join(deps.paths.vault, validated);
     if (!existsSync(abs)) {

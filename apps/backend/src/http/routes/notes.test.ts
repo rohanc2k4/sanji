@@ -433,4 +433,14 @@ describe('notes route', () => {
     const res = await app.request('/api/notes/missing.md', { method: 'DELETE' });
     expect(res.status).toBe(404);
   });
+
+  it('POST /api/notes rejects a .sanji/ path with 400', async () => {
+    const { app } = mount();
+    const res = await app.request('/api/notes', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ path: '.sanji/config.toml' }),
+    });
+    expect(res.status).toBe(400);
+  });
 });

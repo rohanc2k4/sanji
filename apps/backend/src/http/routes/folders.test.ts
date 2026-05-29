@@ -95,6 +95,17 @@ describe('POST /api/folders/move', () => {
     });
     expect(res.status).toBe(404);
   });
+
+  it('rejects a move into .sanji/ with 400', async () => {
+    mkdirSync(join(dir, 'inbox'), { recursive: true });
+    const { app } = mount();
+    const res = await app.request('/api/folders/move', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ from: 'inbox', to: '.sanji/sneaky' }),
+    });
+    expect(res.status).toBe(400);
+  });
 });
 
 describe('DELETE /api/folders/*', () => {

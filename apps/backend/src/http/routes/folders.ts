@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { rename as fsRename, mkdir } from 'node:fs/promises';
 import { existsSync, statSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
-import { validateVaultRelativePath } from '../../tools/validation.js';
+import { validateUserVaultPath } from '../../tools/validation.js';
 import type { VaultPaths } from '../../config/paths.js';
 import type { Indexer } from '../../index/indexer.js';
 import type { IndexRepo } from '../../index/repo.js';
@@ -36,8 +36,8 @@ export function foldersRoute(deps: { paths: VaultPaths; repo?: IndexRepo; indexe
     let fromValid: string;
     let toValid: string;
     try {
-      fromValid = validateVaultRelativePath(body.from);
-      toValid = validateVaultRelativePath(body.to);
+      fromValid = validateUserVaultPath(body.from);
+      toValid = validateUserVaultPath(body.to);
     } catch (err) {
       return c.json({ kind: 'api-error', code: 'BAD_PATH', message: (err as Error).message }, 400);
     }
@@ -79,7 +79,7 @@ export function foldersRoute(deps: { paths: VaultPaths; repo?: IndexRepo; indexe
     const raw = c.req.path.replace(/^\/api\/folders\//, '');
     const decoded = decodeURIComponent(raw);
     let validated: string;
-    try { validated = validateVaultRelativePath(decoded); }
+    try { validated = validateUserVaultPath(decoded); }
     catch (err) { return c.json({ kind: 'api-error', code: 'BAD_PATH', message: (err as Error).message }, 400); }
     const abs = join(deps.paths.vault, validated);
     if (!existsSync(abs) || !statSync(abs).isDirectory()) {
