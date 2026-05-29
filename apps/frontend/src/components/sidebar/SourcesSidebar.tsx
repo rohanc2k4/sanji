@@ -57,6 +57,7 @@ export function SourcesSidebar(props: SourcesSidebarProps) {
   } = props;
 
   const [state, setState] = useState<LoadState>({ kind: 'loading' });
+  const [dragging, setDragging] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [autoRetried, setAutoRetried] = useState(false);
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
@@ -241,6 +242,22 @@ export function SourcesSidebar(props: SourcesSidebarProps) {
     } catch { /* toast already shown */ }
   }
 
+  async function onDropOnRoot(payload: DragPayload) {
+    setDragging(false);
+    if (payload.kind === 'note') {
+      const currentParent = payload.path.includes('/')
+        ? payload.path.slice(0, payload.path.lastIndexOf('/'))
+        : '';
+      if (currentParent === '') return; // already at root, no-op
+      try { await ops.moveNote(payload.path, ''); } catch { /* toast shown */ }
+      return;
+    }
+    // folder
+    if (!payload.path.includes('/')) return; // already at root, no-op
+    const basename = payload.path.split('/').pop()!;
+    try { await ops.moveFolder(payload.path, basename); } catch { /* toast shown */ }
+  }
+
   async function onDropOnFolder(payload: DragPayload, target: TreeNode & { kind: 'folder' }) {
     if (payload.kind === 'note') {
       const currentParent = payload.path.includes('/') ? payload.path.slice(0, payload.path.lastIndexOf('/')) : '';
@@ -293,7 +310,31 @@ export function SourcesSidebar(props: SourcesSidebarProps) {
           </div>
         )}
         {state.kind === 'ready' && displayTree.length > 0 && (
-          <ul className="px-1 pb-2">
+          <ul
+            className="px-1 pb-2"
+            onDragStart={() => setDragging(true)}
+            onDragEnd={() => setDragging(false)}
+          >
+            {dragging && (
+              <li>
+                <div
+                  data-root-dropzone
+                  onDragOver={(e) => {
+                    if (Array.from(e.dataTransfer.types).includes('application/x-sanji-path')) {
+                      e.preventDefault();
+                    }
+                  }}
+                  onDrop={(e) => {
+                    const raw = e.dataTransfer.getData('application/x-sanji-path');
+                    if (!raw) return;
+                    onDropOnRoot(JSON.parse(raw) as DragPayload);
+                  }}
+                  className="mx-1 mb-1 flex h-7 items-center justify-center rounded border border-dashed border-border text-xs text-muted-foreground"
+                >
+                  Move to root
+                </div>
+              </li>
+            )}
             {displayTree.map((n) => (
               <TreeRow
                 key={rowKey(n)}
