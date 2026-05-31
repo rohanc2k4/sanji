@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { SessionBreak } from '@/chat/SessionBreak';
+import { SanjiAvatar } from '@/mascot/SanjiAvatar';
 import type { Turn } from './applyEvent';
 
 export interface ChatMessageProps {
@@ -206,7 +207,9 @@ export function ChatMessage({ turn, streaming, elapsedSec }: ChatMessageProps) {
   const hasBody = fullText.length > 0;
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex items-start gap-3">
+      <SanjiAvatar />
+      <div className="flex min-w-0 flex-1 flex-col gap-2">
       {showActivity && (
         <div
           className="flex max-w-[68ch] items-center gap-2 text-sm text-muted-foreground"
@@ -246,6 +249,7 @@ export function ChatMessage({ turn, streaming, elapsedSec }: ChatMessageProps) {
           {err}
         </div>
       ))}
+      </div>
     </div>
   );
 }
