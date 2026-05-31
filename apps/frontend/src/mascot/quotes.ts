@@ -16,6 +16,7 @@ interface QuotesShape {
   error: string[];
   quota: string[];
   time: { morning: string[]; afternoon: string[]; evening: string[] };
+  onboarding: string[];
 }
 
 const parsed = yaml.load(raw) as QuotesShape;
@@ -35,6 +36,15 @@ function listFor(state: MascotQuoteState): string[] {
 
 export function pickQuote(state: MascotQuoteState, seed: number = Date.now()): string {
   const list = listFor(state);
+  if (list.length === 0) return '';
+  return list[seed % list.length]!;
+}
+
+// Onboarding flight chatter. A separate pool from the mascot-state quotes, so
+// it is independent of the MascotQuoteState union — adding it required no new
+// state. Deterministic by seed, same contract as pickQuote.
+export function pickOnboardingQuote(seed: number = 0): string {
+  const list = parsed.onboarding ?? [];
   if (list.length === 0) return '';
   return list[seed % list.length]!;
 }
