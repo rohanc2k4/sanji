@@ -33,7 +33,7 @@ export interface BubbleState {
   nextAtMs: number;
 }
 
-export const SPEED = 135;        // px/s baseline cruise
+export const SPEED = 270;        // px/s cruise (2x — snappier onboarding flight, per smoke)
 export const OVER = 80;          // off-screen margin for entry/exit
 export const FLOAT_AMP = 30;     // vertical wobble amplitude on L/R passes
 export const FLAP_HZ = 4;        // wing flaps per second
