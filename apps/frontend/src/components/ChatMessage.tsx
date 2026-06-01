@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 import { SessionBreak } from '@/chat/SessionBreak';
 import { SanjiAvatar } from '@/mascot/SanjiAvatar';
+import { normalizeMath } from '@/chat/normalizeMath';
 import type { Turn } from './applyEvent';
 
 export interface ChatMessageProps {
@@ -224,7 +227,7 @@ export function ChatMessage({ turn, streaming, elapsedSec }: ChatMessageProps) {
       )}
       {showMarkdown ? (
         <div className="chat-markdown max-w-[68ch]">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{fullText}</ReactMarkdown>
+          <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{normalizeMath(fullText)}</ReactMarkdown>
         </div>
       ) : hasBody ? (
         <div className="max-w-[68ch] whitespace-pre-wrap text-sm leading-relaxed text-foreground">
