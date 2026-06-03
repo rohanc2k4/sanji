@@ -5,7 +5,7 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import { SessionBreak } from '@/chat/SessionBreak';
 import { SanjiAvatar } from '@/mascot/SanjiAvatar';
-import { normalizeMath } from '@/chat/normalizeMath';
+import { remarkLatexDelimiters } from '@/chat/remarkLatexDelimiters';
 import type { Turn } from './applyEvent';
 
 export interface ChatMessageProps {
@@ -232,7 +232,7 @@ export function ChatMessage({ turn, streaming, elapsedSec }: ChatMessageProps) {
       )}
       {showMarkdown ? (
         <div className="chat-markdown max-w-[68ch]">
-          <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{normalizeMath(fullText)}</ReactMarkdown>
+          <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath, remarkLatexDelimiters]} rehypePlugins={[rehypeKatex]}>{fullText}</ReactMarkdown>
         </div>
       ) : hasBody ? (
         <div className="max-w-[68ch] whitespace-pre-wrap text-sm leading-relaxed text-foreground">
