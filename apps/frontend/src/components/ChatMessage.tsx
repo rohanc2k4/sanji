@@ -208,6 +208,11 @@ export function ChatMessage({ turn, streaming, elapsedSec }: ChatMessageProps) {
   const elapsedSuffix =
     typeof elapsedSec === 'number' ? ` · ${elapsedSec}s` : '';
   const hasBody = fullText.length > 0;
+  // Suppress empty assistant turns (e.g. aborted before the first delta): with no
+  // activity, body, or errors there is nothing to show, and the unconditional
+  // avatar would otherwise leave a stray Sanji icon on a blank row.
+  const hasVisibleContent = showActivity || hasBody || turn.errors.length > 0;
+  if (!hasVisibleContent) return null;
 
   return (
     <div className="flex items-start gap-3">
