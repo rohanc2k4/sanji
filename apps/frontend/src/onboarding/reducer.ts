@@ -1,4 +1,4 @@
-import type { ConfigDto, ProviderTestResult, VaultValidateResult } from '@sanji/shared';
+import type { ConfigDto, ProviderTestResult, VaultValidateResult, ClaudeCliCheckResult } from '@sanji/shared';
 
 // Calendar + tavily steps are scoped for v0.3 (planning rituals: /daily,
 // /research, web_search). v0.1 onboarding ships with just the study-buddy
@@ -22,6 +22,7 @@ export interface OnboardingState {
   providerMode: 'claude-code' | 'anthropic-api';
   anthropicApiKey: string;
   providerTestResult: ProviderTestResult | null;
+  cliCheck?: ClaudeCliCheckResult;
   modelDefault: string;
   modelHeavy: string;
   indexedNotes: number;
@@ -51,6 +52,8 @@ export type OnboardingAction =
       anthropicApiKey?: string;
       testResult: ProviderTestResult;
     }
+  | { type: 'set-cli-check'; result: ClaudeCliCheckResult }
+  | { type: 'clear-cli-check' }
   | { type: 'index-progress'; done: number; total: number }
   | { type: 'next' }
   | { type: 'back' }
@@ -82,6 +85,12 @@ export function onboardingReducer(s: OnboardingState, a: OnboardingAction): Onbo
         anthropicApiKey: a.anthropicApiKey ?? '',
         providerTestResult: a.testResult,
       };
+    case 'set-cli-check':
+      return { ...s, cliCheck: a.result };
+    case 'clear-cli-check': {
+      const { cliCheck: _drop, ...rest } = s;
+      return rest as OnboardingState;
+    }
     case 'index-progress':
       return { ...s, indexedNotes: a.done, totalNotes: a.total };
     case 'set-error':

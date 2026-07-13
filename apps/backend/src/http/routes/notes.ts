@@ -4,7 +4,7 @@ import { existsSync, statSync } from 'node:fs';
 import { basename, dirname, extname, join } from 'node:path';
 import { parseNote } from '../../vault/parse.js';
 import { writeNoteTool } from '../../tools/write-note.js';
-import { validateVaultRelativePath } from '../../tools/validation.js';
+import { validateVaultRelativePath, validateUserVaultPath } from '../../tools/validation.js';
 import type { VaultPaths } from '../../config/paths.js';
 import type { ToolContext } from '../../tools/types.js';
 import type { Indexer } from '../../index/indexer.js';
@@ -135,6 +135,78 @@ export function notesRoute(deps: { paths: VaultPaths; repo?: IndexRepo; indexer?
     } catch (err) {
       return c.json({ kind: 'api-error', code: 'WRITE_FAILED', message: (err as Error).message }, 400);
     }
+  });
+
+  r.post('/api/notes', async (c) => {
+    const body = await c.req.json().catch(() => null) as { path?: unknown; content?: unknown } | null;
+    if (!body || typeof body.path !== 'string') {
+      return c.json({ kind: 'api-error', code: 'BAD_BODY', message: 'path must be string' }, 400);
+    }
+    if (body.content !== undefined && typeof body.content !== 'string') {
+      return c.json({ kind: 'api-error', code: 'BAD_BODY', message: 'content must be string when provided' }, 400);
+    }
+    let validated: string;
+    try { validated = validateUserVaultPath(body.path); }
+    catch (err) { return c.json({ kind: 'api-error', code: 'BAD_PATH', message: (err as Error).message }, 400); }
+    const abs = join(deps.paths.vault, validated);
+    if (existsSync(abs)) {
+      return c.json({ kind: 'api-error', code: 'TARGET_EXISTS', message: validated }, 409);
+    }
+    const titleFromPath = basename(validated, extname(validated));
+    const safeTitle = /[:#\n]/.test(titleFromPath) ? JSON.stringify(titleFromPath) : titleFromPath;
+    const skeleton = body.content ?? `---\ntitle: ${safeTitle}\ncreated: ${new Date().toISOString()}\n---\n\n# ${titleFromPath}\n\n`;
+    try {
+      await mkdir(dirname(abs), { recursive: true });
+      await writeFile(abs, skeleton, 'utf8');
+    } catch (err) {
+      return c.json({ kind: 'api-error', code: 'FS_FAILED', message: (err as Error).message }, 500);
+    }
+    if (deps.indexer) {
+      try { await deps.indexer.indexFile(deps.paths.vault, validated); }
+      catch (err) {
+        if (deps.repo) deps.repo.invalidateNoteIndexVersion(validated);
+        process.stderr.write(
+          `post-create indexFile failed for ${validated}: ${
+            err instanceof Error ? err.message : String(err)
+          }\n`,
+        );
+      }
+    } else if (deps.repo) {
+      const mtimeMs = statSync(abs).mtimeMs;
+      const parsed = parseNote(validated, skeleton, mtimeMs);
+      deps.repo.upsertNote(parsed.note);
+    }
+    return c.json({ path: validated });
+  });
+
+  r.delete('/api/notes/*', async (c) => {
+    const raw = c.req.path.replace(/^\/api\/notes\//, '');
+    const decoded = decodeURIComponent(raw);
+    let validated: string;
+    try { validated = validateUserVaultPath(decoded); }
+    catch (err) { return c.json({ kind: 'api-error', code: 'BAD_PATH', message: (err as Error).message }, 400); }
+    const abs = join(deps.paths.vault, validated);
+    if (!existsSync(abs)) {
+      return c.json({ kind: 'api-error', code: 'NOT_FOUND', message: validated }, 404);
+    }
+    const trashRoot = join(deps.paths.sanjiDir, 'trash');
+    let trashAbs = join(trashRoot, validated);
+    if (existsSync(trashAbs)) {
+      trashAbs = `${trashAbs}.${Date.now()}`;
+    }
+    try {
+      await mkdir(dirname(trashAbs), { recursive: true });
+      await fsRename(abs, trashAbs);
+    } catch (err) {
+      return c.json({ kind: 'api-error', code: 'TRASH_FAILED', message: (err as Error).message }, 500);
+    }
+    if (deps.repo) {
+      try { deps.repo.deleteNote(validated); }
+      catch (err) {
+        process.stderr.write(`post-delete repo purge failed for ${validated}: ${err instanceof Error ? err.message : String(err)}\n`);
+      }
+    }
+    return c.json({ path: validated, trashedTo: trashAbs.slice(deps.paths.vault.length + 1) });
   });
 
   r.post('/api/notes/rename', async (c) => {

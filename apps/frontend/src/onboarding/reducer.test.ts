@@ -110,6 +110,23 @@ describe('onboardingReducer', () => {
     const clear = onboardingReducer(set, { type: 'set-error', message: null });
     expect(clear.error).toBeNull();
   });
+
+  it('set-cli-check populates the cliCheck field', () => {
+    const next = onboardingReducer(initialOnboardingState, {
+      type: 'set-cli-check',
+      result: { installed: false, os: 'darwin' },
+    });
+    expect(next.cliCheck).toEqual({ installed: false, os: 'darwin' });
+  });
+
+  it('clear-cli-check removes the cliCheck field', () => {
+    const seeded = {
+      ...initialOnboardingState,
+      cliCheck: { installed: false, os: 'linux' as const },
+    };
+    const next = onboardingReducer(seeded, { type: 'clear-cli-check' });
+    expect(next.cliCheck).toBeUndefined();
+  });
 });
 
 describe('buildConfig', () => {

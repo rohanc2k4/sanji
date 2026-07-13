@@ -78,6 +78,29 @@ function ChatRoot({ config }: { config: ConfigDto | null }) {
     bumpSidebar();
   }
 
+  function handleDeleted(path: string) {
+    setEditorPath((curr) => (curr === path ? null : curr));
+    bumpSidebar();
+  }
+
+  function handleFolderMoved(from: string, to: string) {
+    setEditorPath((curr) => {
+      if (curr === from || (curr !== null && curr.startsWith(`${from}/`))) {
+        return `${to}${curr.slice(from.length)}`;
+      }
+      return curr;
+    });
+    bumpSidebar();
+  }
+
+  function handleFolderDeleted(path: string) {
+    setEditorPath((curr) => {
+      if (curr === path || (curr !== null && curr.startsWith(`${path}/`))) return null;
+      return curr;
+    });
+    bumpSidebar();
+  }
+
   async function startIngestFiles(files: File[]) {
     for (const f of files) {
       const ctrl = new AbortController();
@@ -153,6 +176,9 @@ function ChatRoot({ config }: { config: ConfigDto | null }) {
         onAddSource={() => setModalOpen(true)}
         onNoteSaved={bumpSidebar}
         onNoteRenamed={handleRenamed}
+        onNoteDeleted={handleDeleted}
+        onFolderMoved={handleFolderMoved}
+        onFolderDeleted={handleFolderDeleted}
         sidebarRefreshKey={sidebarRefreshKey}
         config={config}
       />

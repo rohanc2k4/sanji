@@ -4,6 +4,7 @@ import { configRoute } from './routes/config.js';
 import { onboardingRoute } from './routes/onboarding.js';
 import { vaultRoute } from './routes/vault.js';
 import { notesRoute } from './routes/notes.js';
+import { foldersRoute } from './routes/folders.js';
 import { chatRoute } from './routes/chat.js';
 import { indexingRoute } from './routes/indexing.js';
 import { ingestRoute } from './routes/ingest.js';
@@ -57,6 +58,7 @@ function buildRoutes(
     app.route('/', configRoute({ paths: deps.paths }));
     app.route('/', vaultRoute({ db: deps.db, paths: deps.paths }));
     app.route('/', notesRoute({ paths: deps.paths, repo: deps.repo, indexer: deps.indexer }));
+    app.route('/', foldersRoute({ paths: deps.paths, repo: deps.repo, indexer: deps.indexer }));
     app.route(
       '/',
       chatRoute({

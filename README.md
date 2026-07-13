@@ -15,6 +15,15 @@ Meet Sanji: your open-source, free-to-use AI study buddy. Sanji reads your markd
 - Orange tabby mascot in the corner because why not.
 - MIT, runs in Docker.
 
+## Sources sidebar
+
+Create, rename, move, and delete notes and folders directly inside Sanji:
+
+- Hover a row for inline actions: rename and delete on any item; folders also get a "+" to add a note or subfolder inside.
+- Drag notes or folders between locations to reorganize. The vault on disk reflects every move.
+- Deletions are soft. Notes and folders move to `.sanji/trash/` under their original relative path. To clear trash permanently, run `rm -rf .sanji/trash/` in your vault.
+- "New folder" stays in memory until you add the first note. Reload before adding anything and the empty folder disappears (nothing was written to disk).
+
 ## Quickstart (when v0.1 ships)
 
 ```bash

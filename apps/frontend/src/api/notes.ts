@@ -33,3 +33,15 @@ export const renameNote = (from: string, to: string) =>
     method: 'POST',
     body: JSON.stringify({ from, to }),
   });
+
+export const createNote = (path: string, content?: string) =>
+  apiFetch<{ path: string }>('/api/notes', {
+    method: 'POST',
+    body: JSON.stringify(content === undefined ? { path } : { path, content }),
+  });
+
+export const deleteNote = (path: string) =>
+  apiFetch<{ path: string; trashedTo: string }>(
+    `/api/notes/${encodeURIComponent(path)}`,
+    { method: 'DELETE' },
+  );

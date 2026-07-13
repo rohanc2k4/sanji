@@ -78,4 +78,19 @@ describe('onboarding route', () => {
     expect(existsSync(paths.configFile)).toBe(true);
     expect(existsSync(paths.indexDb)).toBe(true);
   });
+
+  it('POST /api/onboarding/check-claude-cli returns the probe result', async () => {
+    const app = mountApp();
+    const res = await app.request('/api/onboarding/check-claude-cli', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { installed: boolean; os: string };
+    // We can't assert on installed=true/false in a unit test (depends on the
+    // host machine), but the shape is contract-stable.
+    expect(typeof body.installed).toBe('boolean');
+    expect(['darwin', 'linux', 'win32']).toContain(body.os);
+  });
 });

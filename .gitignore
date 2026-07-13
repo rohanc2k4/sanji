@@ -38,3 +38,4 @@ sample-vault/inbox/*
 test-results/
 playwright-report/
 .playwright/
+.superpowers/

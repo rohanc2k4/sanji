@@ -22,5 +22,7 @@ export default defineConfig({
   // import from `@playwright/test` (not vitest) and need a real browser.
   test: {
     exclude: ['e2e/**', 'node_modules/**', 'dist/**'],
+    environmentMatchGlobs: [['**/*.test.tsx', 'jsdom'], ['**/sidebar/*.test.ts', 'jsdom']],
+    setupFiles: ['./src/test-setup.ts'],
   },
 });
