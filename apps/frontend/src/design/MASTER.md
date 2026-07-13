@@ -189,7 +189,7 @@ The skill recommends 150–300ms for micro-interactions and respect for `prefers
 - Respect `prefers-reduced-motion: reduce` — set all durations to 0 except mascot idle blink (becomes a static frame).
 - Animate opacity, transform, and luminance only. Never animate hue.
 - Exit animations are 60–70% of enter duration (per skill's `exit-faster-than-enter` rule).
-- No bouncy springs anywhere except a single subtle mascot ear-twitch on first message of the session.
+- No bouncy springs in UI chrome. The canvas mascot is the only animated character (idle moods + reacting poses), driven by its own requestAnimationFrame loop rather than CSS.
 
 ---
 
@@ -201,7 +201,7 @@ Sanji has three surfaces. Each has a single anchor mood-board reference — the 
 
 **Layout.** B-layout: Sources (left, 260px) | Chat (center, fluid) | Editor (right, 40%, collapsible).
 
-**Mascot.** Lives bottom-right of the chat column at 64×64, fixed within the pane (not the viewport). Idle: eyes blink every 4–7s (randomized). Streaming: ears twitch once per assistant turn. Error: head tilts 8° and stays until dismissed.
+**Mascot.** Lives bottom-right of the chat column at 64×64, fixed within the pane (not the viewport). Hand-rendered on a canvas. Idle cycles sub-moods (snooze, energetic, groom, calm) on a jittered 8–16s timer with occasional blinks. Streaming (active): the head tilts side to side. Error: worried eyes and a frown. Reduced motion holds a single static frame.
 
 **Chat column anatomy.**
 - Top: thin breadcrumb showing active skill (e.g. `/daily`) at `text-xs`, `--fg-muted`.
@@ -410,6 +410,6 @@ Adapted from the skill's web/desktop checklist; mobile-only items removed.
 
 - Tokens land as CSS custom properties under `:root` in `apps/frontend/src/design/tokens.css`, mapped into Tailwind v4 via `@theme` in the same file or a sibling.
 - shadcn/ui components are adopted one-by-one and themed against these tokens. We do not pull the whole kit; each component is a deliberate add.
-- The mascot is a single SVG with three states (idle, blink, tilt) — the only custom asset shipped in v0.1.
+- The mascot is hand-rendered on a canvas (no SVG, no asset files): a front-facing seated form for the chat corner and the chat avatar, and a winged side-profile form for the onboarding flight. It is the only custom character in v0.1. See `apps/frontend/src/mascot/` (pure `art/` drawing modules, pure pose/cycler/flight logic, and the thin React canvas layer).
 - Page-specific overrides (when needed) live at `apps/frontend/src/design/pages/[page-name].md` and override this Master file for that page only.
 - This document is read by humans first and Claude second. When something here is wrong in practice, fix it in code, then update this file in the same PR — never the reverse.

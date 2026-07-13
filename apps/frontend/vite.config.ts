@@ -22,7 +22,12 @@ export default defineConfig({
   // import from `@playwright/test` (not vitest) and need a real browser.
   test: {
     exclude: ['e2e/**', 'node_modules/**', 'dist/**'],
-    environmentMatchGlobs: [['**/*.test.tsx', 'jsdom'], ['**/sidebar/*.test.ts', 'jsdom']],
+    // Route .test.tsx files (React component tests) and the sidebar hook suites
+    // to the jsdom environment. Other .test.ts files stay in node (the default).
+    environmentMatchGlobs: [
+      ['**/*.test.tsx', 'jsdom'],
+      ['**/sidebar/*.test.ts', 'jsdom'],
+    ],
     setupFiles: ['./src/test-setup.ts'],
   },
 });

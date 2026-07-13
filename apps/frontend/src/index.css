@@ -131,20 +131,6 @@
     }
 }
 
-/* Mascot animations — slow breathing baseline + ear twitch on active state. */
-@keyframes mascot-breathe {
-  0%, 100% { transform: translateY(0) scale(1); }
-  50%      { transform: translateY(-1px) scale(1.02); }
-}
-@keyframes ear-twitch {
-  0%, 92%, 100% { transform: rotate(0); }
-  94%           { transform: rotate(-6deg); }
-  96%           { transform: rotate(2deg); }
-  98%           { transform: rotate(0); }
-}
-.animate-mascot-breathe { animation: mascot-breathe 4.5s ease-in-out infinite; }
-.animate-ear-twitch { animation: ear-twitch 5s ease-in-out infinite; }
-
 /* Indeterminate progress used by IngestStatusPanel during the rewriting
    phase, where Claude can take 30-60s with no streamed-progress signal —
    honest "still working" indicator instead of a faked percentage. */

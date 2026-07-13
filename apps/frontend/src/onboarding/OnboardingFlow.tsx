@@ -10,6 +10,7 @@ import { VaultStep } from './steps/VaultStep';
 import { ProviderStep } from './steps/ProviderStep';
 import { IndexingStep } from './steps/IndexingStep';
 import { DoneStep } from './steps/DoneStep';
+import { OnboardingMascot } from './OnboardingMascot';
 
 export interface OnboardingFlowProps {
   onComplete: () => void;
@@ -42,6 +43,7 @@ export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
 
   return (
     <div className="flex min-h-screen flex-col bg-background font-sans text-foreground">
+      <OnboardingMascot step={state.step} />
       <div className="mx-auto flex w-full max-w-xl flex-1 flex-col px-6 pt-[12vh]">
         <ProgressDots step={state.step} />
 

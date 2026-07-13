@@ -34,6 +34,9 @@ async function walkOnboardingThroughIndexing(page: import('@playwright/test').Pa
   ]);
   if (await sourcesLabel.isVisible()) return;
 
+  // Phase 7: the flight overlay is mounted for the duration of the wizard.
+  await expect(page.getByTestId('onboarding-mascot')).toBeVisible();
+
   // ---- Vault step ----
   await page.getByLabel(/vault path/i).fill(vault);
   await page.getByRole('button', { name: /^validate$/i }).click();
@@ -72,6 +75,8 @@ async function walkOnboardingThroughIndexing(page: import('@playwright/test').Pa
   // ---- Chat shell ----
   await expect(page.locator('header').getByText(/sanji/i).first()).toBeVisible();
   await expect(page.getByText(/^sources$/i)).toBeVisible();
+  // The overlay unmounts with the wizard once onboarding completes.
+  await expect(page.getByTestId('onboarding-mascot')).toHaveCount(0);
 }
 
 // Merged into a single sequential test because Playwright shares the backend

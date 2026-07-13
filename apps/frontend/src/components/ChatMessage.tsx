@@ -1,7 +1,11 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 import { SessionBreak } from '@/chat/SessionBreak';
+import { SanjiAvatar } from '@/mascot/SanjiAvatar';
+import { remarkLatexDelimiters } from '@/chat/remarkLatexDelimiters';
 import type { Turn } from './applyEvent';
 
 export interface ChatMessageProps {
@@ -204,9 +208,16 @@ export function ChatMessage({ turn, streaming, elapsedSec }: ChatMessageProps) {
   const elapsedSuffix =
     typeof elapsedSec === 'number' ? ` · ${elapsedSec}s` : '';
   const hasBody = fullText.length > 0;
+  // Suppress empty assistant turns (e.g. aborted before the first delta): with no
+  // activity, body, or errors there is nothing to show, and the unconditional
+  // avatar would otherwise leave a stray Sanji icon on a blank row.
+  const hasVisibleContent = showActivity || hasBody || turn.errors.length > 0;
+  if (!hasVisibleContent) return null;
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex items-start gap-3">
+      <SanjiAvatar />
+      <div className="flex min-w-0 flex-1 flex-col gap-2">
       {showActivity && (
         <div
           className="flex max-w-[68ch] items-center gap-2 text-sm text-muted-foreground"
@@ -221,7 +232,7 @@ export function ChatMessage({ turn, streaming, elapsedSec }: ChatMessageProps) {
       )}
       {showMarkdown ? (
         <div className="chat-markdown max-w-[68ch]">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{fullText}</ReactMarkdown>
+          <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath, remarkLatexDelimiters]} rehypePlugins={[rehypeKatex]}>{fullText}</ReactMarkdown>
         </div>
       ) : hasBody ? (
         <div className="max-w-[68ch] whitespace-pre-wrap text-sm leading-relaxed text-foreground">
@@ -246,6 +257,7 @@ export function ChatMessage({ turn, streaming, elapsedSec }: ChatMessageProps) {
           {err}
         </div>
       ))}
+      </div>
     </div>
   );
 }

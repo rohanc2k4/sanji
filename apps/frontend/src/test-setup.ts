@@ -5,9 +5,11 @@ import '@testing-library/jest-dom/vitest';
 import { afterEach } from 'vitest';
 import { cleanup } from '@testing-library/react';
 
-// RTL's auto-cleanup only triggers when `afterEach` is globally available.
-// Vitest doesn't expose globals by default, so wire cleanup explicitly so
-// each test starts with an empty DOM.
+// RTL renders accumulate in document.body across tests in a file. Without an
+// explicit cleanup, global `screen` queries (used by the Mascot / OnboardingMascot
+// component tests) find duplicate elements and throw. Wire cleanup so each test
+// starts with an empty DOM. cleanup() no-ops in the node environment where
+// nothing was rendered, so this is safe for the plain .test.ts logic suites too.
 afterEach(() => {
   cleanup();
 });
