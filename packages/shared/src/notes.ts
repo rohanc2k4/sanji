@@ -4,7 +4,7 @@ export const NoteSchema = z.object({
   path: z.string(),
   mtimeMs: z.number(),
   body: z.string(),
-  frontmatter: z.record(z.unknown()).nullable(),
+  frontmatter: z.record(z.string(), z.unknown()).nullable(),
   title: z.string().nullable(),
 });
 export type Note = z.infer<typeof NoteSchema>;
